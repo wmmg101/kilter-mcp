@@ -43,15 +43,29 @@ jobs:
           uv run kilter-mcp --version
           uv run kilter-mcp --help
 
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t kilter-mcp:ci .
+      - name: Image runs and reports missing config cleanly
+        run: |
+          docker run --rm kilter-mcp:ci --version
+          # --check with no credentials must exit 1 with the config hint, not crash.
+          if docker run --rm kilter-mcp:ci --check; then
+            echo "expected non-zero exit without credentials" >&2; exit 1
+          fi
+
   # Single required status check for branch protection, regardless of matrix shape.
   ci:
     if: always()
-    needs: test
+    needs: [test, docker]
     runs-on: ubuntu-latest
     steps:
-      - name: All matrix jobs passed
+      - name: All jobs passed
         run: |
-          if [ "${{ needs.test.result }}" != "success" ]; then
-            echo "test matrix result: ${{ needs.test.result }}" >&2
+          if [ "${{ needs.test.result }}" != "success" ] || [ "${{ needs.docker.result }}" != "success" ]; then
+            echo "test: ${{ needs.test.result }}, docker: ${{ needs.docker.result }}" >&2
             exit 1
           fi
