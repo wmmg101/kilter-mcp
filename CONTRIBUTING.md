@@ -108,3 +108,7 @@ involved and nobody publishes from a laptop.
 2. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 3. `release.yml` checks the tag matches the version, runs lint and tests, builds, publishes.
 4. Create the GitHub release: `gh release create vX.Y.Z --title "kilter-mcp X.Y.Z" --notes-file <(sed -n '/^## X.Y.Z/,/^## /p' CHANGELOG.md)`.
+5. Publish the new version to the MCP Registry: bump both `version` fields in `server.json`
+   to match, then `mcp-publisher validate server.json && mcp-publisher publish server.json`
+   (one-time `mcp-publisher login github` first). The referenced PyPI release must already
+   exist and its README must contain the `mcp-name: io.github.wmmg101/kilter-mcp` marker.

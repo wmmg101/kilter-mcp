@@ -22,6 +22,6 @@
 - [x] 18. 0.1.1: 60 s logbook cache, Retry-After handling, SECURITY.md, CHANGELOG
 - [x] 19. Timezone-aware sessions (`KILTER_TIMEZONE` or host tz) — 0.2.0
 - [x] 20. Surface user's own grade/rating from embedded `climbRating` — 0.2.0
-- [ ] 21. Publish 0.2.0 to MCP Registry (`server.json`, `mcp-publisher`)
+- [x] 21. Published 0.2.0 to MCP Registry as io.github.wmmg101/kilter-mcp
 - [ ] 22. (later) climb catalogue tools
 - [ ] 23. (later) `.mcpb` bundle for Claude Desktop
