@@ -25,3 +25,5 @@
 - [x] 21. Published 0.2.0 to MCP Registry as io.github.wmmg101/kilter-mcp
 - [ ] 22. (later) climb catalogue tools
 - [ ] 23. (later) `.mcpb` bundle for Claude Desktop
+- [x] 24. 0.2.1: login-failure cooldown, --check, Windows/macOS CI, Dependabot, issue
+      templates, CoC, branch ruleset (ci check required, no force-push/delete on main)
