@@ -308,3 +308,15 @@ def test_main_check_flag_exits_with_code(monkeypatch: pytest.MonkeyPatch, capsys
         main(["--check"])
     assert info.value.code == 1
     assert "config:    FAILED" in capsys.readouterr().out
+
+
+async def test_every_tool_parameter_is_described(server):
+    async with Client(server) as client:
+        listed = await client.list_tools()
+    missing = [
+        f"{tool.name}.{name}"
+        for tool in listed.tools
+        for name, prop in (tool.input_schema.get("properties") or {}).items()
+        if not prop.get("description")
+    ]
+    assert missing == []

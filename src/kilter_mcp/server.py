@@ -12,11 +12,12 @@ import sys
 import time
 from collections.abc import Callable
 from datetime import tzinfo
-from typing import Any, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
+from pydantic import Field
 
 from kilter_mcp import __version__
 from kilter_mcp.analytics import (
@@ -40,6 +41,30 @@ from kilter_mcp.models import LogEntry
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=True)
 
 _F = TypeVar("_F", bound=Callable[..., Any])
+
+# Parameter types shared across tools. The Field descriptions land in each tool's JSON schema,
+# which is what the agent reads when deciding how to call it.
+Angle = Annotated[
+    int | None,
+    Field(description="Wall angle in degrees (e.g. 20, 30, 40). Omit for all angles."),
+]
+Limit = Annotated[int | None, Field(description="Maximum number of items to return.", ge=1)]
+Topped = Annotated[
+    bool | None,
+    Field(description="true = only topped (sent) entries, false = only unsuccessful attempts."),
+]
+StartDate = Annotated[
+    str | None,
+    Field(description="Inclusive start date, YYYY-MM-DD, in the user's timezone."),
+]
+EndDate = Annotated[
+    str | None,
+    Field(description="Inclusive end date, YYYY-MM-DD, in the user's timezone."),
+]
+Period = Annotated[
+    Literal["month", "week"],
+    Field(description="Bucket size for the progression: calendar month or ISO week."),
+]
 
 
 def _read_only_tool(server: MCPServer, name: str) -> Callable[[_F], _F]:
@@ -172,11 +197,11 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
     @_read_only_tool(server, "kilter_get_logs")
     async def kilter_get_logs(
-        limit: int | None = 50,
-        angle: int | None = None,
-        topped: bool | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
+        limit: Limit = 50,
+        angle: Angle = None,
+        topped: Topped = None,
+        start_date: StartDate = None,
+        end_date: EndDate = None,
     ) -> dict[str, Any]:
         """Return the user's Kilter logbook entries, newest first.
 
@@ -200,10 +225,10 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
     @_read_only_tool(server, "kilter_get_sends")
     async def kilter_get_sends(
-        limit: int | None = 50,
-        angle: int | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
+        limit: Limit = 50,
+        angle: Angle = None,
+        start_date: StartDate = None,
+        end_date: EndDate = None,
     ) -> dict[str, Any]:
         """Return climbs the user has topped (sent), newest first.
 
@@ -225,8 +250,8 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
     @_read_only_tool(server, "kilter_get_projects")
     async def kilter_get_projects(
-        angle: int | None = None,
-        limit: int | None = 50,
+        angle: Angle = None,
+        limit: Limit = 50,
     ) -> dict[str, Any]:
         """Return the user's projects: climbs attempted but never topped at that wall angle.
 
@@ -252,7 +277,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         return {"timezone": svc.tz_name, **summary(logs, grades, tz=svc.tz)}
 
     @_read_only_tool(server, "kilter_get_grade_pyramid")
-    async def kilter_get_grade_pyramid(angle: int | None = None) -> dict[str, Any]:
+    async def kilter_get_grade_pyramid(angle: Angle = None) -> dict[str, Any]:
         """Return the user's send pyramid: sends per grade, hardest first, with flash rates.
 
         Use when the user asks about their grade pyramid, distribution of grades, flash
@@ -262,9 +287,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         return grade_pyramid(logs, grades, angle=angle)
 
     @_read_only_tool(server, "kilter_get_hardest_sends")
-    async def kilter_get_hardest_sends(
-        limit: int | None = 10, angle: int | None = None
-    ) -> dict[str, Any]:
+    async def kilter_get_hardest_sends(limit: Limit = 10, angle: Angle = None) -> dict[str, Any]:
         """Return the user's hardest sent climbs (unique per climb and angle), hardest first.
 
         Use when the user asks about their hardest sends, best climbs, max grade, or personal
@@ -275,7 +298,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         return {"hardest_sends": hardest_sends(logs, grades, limit=n, angle=angle, tz=svc.tz)}
 
     @_read_only_tool(server, "kilter_get_sessions")
-    async def kilter_get_sessions(limit: int | None = 5) -> dict[str, Any]:
+    async def kilter_get_sessions(limit: Limit = 5) -> dict[str, Any]:
         """Return recent climbing sessions (entries grouped by calendar day), newest first.
 
         Use when the user asks how their last session went, what they climbed yesterday, or
@@ -288,7 +311,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
     @_read_only_tool(server, "kilter_get_progression")
     async def kilter_get_progression(
-        period: str = "month", angle: int | None = None
+        period: Period = "month", angle: Angle = None
     ) -> dict[str, Any]:
         """Return climbing progression over time, oldest period first.
 
