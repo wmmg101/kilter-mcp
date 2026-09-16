@@ -33,3 +33,6 @@ htmlcov/
 
 # Kiro local settings (may contain per-user MCP config with credentials)
 .kiro/settings/
+
+# Maintainer-only working notes, not part of the published repo
+docs/launch-posts.md
