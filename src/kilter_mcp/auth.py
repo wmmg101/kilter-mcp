@@ -100,6 +100,14 @@ class TokenManager:
         )
 
     async def _token_request(self, data: dict[str, Any], *, failure_hint: str) -> None:
+        # Deliberately split in two: this frame holds the form data (password / refresh token)
+        # and never raises, so a traceback's "failing frame" arguments can't expose them.
+        # Debuggers and test runners (pytest) print those arguments by default.
+        outcome = await self._post_form(data)
+        self._apply_token_outcome(outcome, failure_hint)
+
+    async def _post_form(self, data: dict[str, Any]) -> tuple[int, Any, str]:
+        """POST to the token endpoint. Returns (status, json_or_None, redacted_error)."""
         try:
             response = await self._http.post(
                 TOKEN_URL,
@@ -108,15 +116,19 @@ class TokenManager:
                 timeout=self._settings.timeout_seconds,
             )
         except httpx2.HTTPError as exc:
-            raise AuthError(f"{failure_hint} Network error: {self._redact(str(exc))}") from None
-
-        if response.status_code != 200:
-            detail = _error_detail(response)
-            raise AuthError(f"{failure_hint} ({response.status_code}{detail})") from None
-
+            return 0, None, self._redact(str(exc))
         try:
-            payload = response.json()
+            return response.status_code, response.json(), ""
         except ValueError:
+            return response.status_code, None, ""
+
+    def _apply_token_outcome(self, outcome: tuple[int, Any, str], failure_hint: str) -> None:
+        status, payload, network_error = outcome
+        if status == 0:
+            raise AuthError(f"{failure_hint} Network error: {network_error}") from None
+        if status != 200:
+            raise AuthError(f"{failure_hint} ({status}{_error_detail(payload)})") from None
+        if not isinstance(payload, dict):
             raise AuthError(f"{failure_hint} Unexpected non-JSON response.") from None
 
         access = payload.get("access_token")
@@ -133,12 +145,8 @@ class TokenManager:
         self._expires_at = self._clock() + lifetime
 
 
-def _error_detail(response: httpx2.Response) -> str:
+def _error_detail(payload: Any) -> str:
     """Extract Keycloak's error code (never its full body, which could echo input)."""
-    try:
-        payload = response.json()
-    except ValueError:
-        return ""
     if isinstance(payload, dict):
         code = payload.get("error")
         desc = payload.get("error_description")

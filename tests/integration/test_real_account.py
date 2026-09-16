@@ -10,7 +10,8 @@ import os
 
 import pytest
 
-from kilter_mcp.client import KilterClient
+from kilter_mcp.auth import AuthError
+from kilter_mcp.client import KilterAPIError, KilterClient
 from kilter_mcp.config import Settings
 
 pytestmark = pytest.mark.skipif(
@@ -26,6 +27,9 @@ async def test_real_logs_and_grades_have_expected_shape():
     try:
         grades = await client.get_grades()
         logs = await client.get_logs()
+    except (AuthError, KilterAPIError) as exc:
+        # Fail with the (redacted) message only; a traceback would print frame locals.
+        pytest.fail(str(exc), pytrace=False)
     finally:
         await client.aclose()
     assert grades.source == "api"

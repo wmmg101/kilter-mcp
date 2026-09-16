@@ -115,3 +115,23 @@ async def test_repr_never_contains_tokens(fake: FakeKilter, settings: Settings):
     assert ACCESS_1 not in text
     assert REFRESH_1 not in text
     assert TEST_PASSWORD not in text
+
+
+async def test_failing_frame_locals_never_hold_secrets(fake: FakeKilter, settings: Settings):
+    """pytest/debuggers print the raising frame's locals; they must not contain credentials."""
+    import traceback
+
+    fake.password_ok = False
+    tm = TokenManager(settings, fake.http(), clock=Clock())
+    try:
+        await tm.get_access_token()
+    except AuthError as exc:
+        tb = exc.__traceback__
+        assert tb is not None
+        frames = traceback.walk_tb(tb)
+        innermost = list(frames)[-1][0]
+        blob = repr(innermost.f_locals)
+        assert TEST_PASSWORD not in blob
+        assert "grant_type" not in blob
+    else:
+        raise AssertionError("expected AuthError")
