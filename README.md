@@ -13,7 +13,7 @@ Kilter login, and then just talk to the agent:
 
 Read-only. Nothing is written to your Kilter account.
 
-## Add to Kiro
+## Add to Kiro + Other Clients (Claude, Codex, Cursor etc.)
 
 [![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=kilter&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22kilter-mcp%22%5D%2C%22env%22%3A%7B%22KILTER_USERNAME%22%3A%22%24%7BKILTER_USERNAME%7D%22%2C%22KILTER_PASSWORD%22%3A%22%24%7BKILTER_PASSWORD%7D%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
 
