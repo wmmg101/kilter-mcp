@@ -13,6 +13,8 @@ Kilter login, and then just talk to the agent:
 > Compare my climbing at 20° and 40°.
 > Show my grade pyramid. What are my hardest sends? Am I progressing?
 
+<img src="docs/example-session.png" alt='Kiro answering "How did my last Kilter session go?" by calling kilter_get_sessions and summarising: 16 climbs logged at 20°, 14 flashed, the two misses named, hardest send V0 (4C).' width="800">
+
 Read-only. Nothing is written to your Kilter account.
 
 ## Add to Kiro + Other Clients (Claude, Codex, Cursor etc.)
