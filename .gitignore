@@ -1,0 +1,35 @@
+# Secrets / local config
+.env
+.env.*
+*.token
+*.tokens
+tokens/
+secrets/
+dumps/
+*.dump.json
+api-dumps/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Kiro local settings (may contain per-user MCP config with credentials)
+.kiro/settings/

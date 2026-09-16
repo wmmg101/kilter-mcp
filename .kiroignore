@@ -1,0 +1,16 @@
+# Keep secrets and bulky/generated content out of the agent's context
+.env
+.env.*
+*.token
+*.tokens
+tokens/
+secrets/
+dumps/
+api-dumps/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+uv.lock

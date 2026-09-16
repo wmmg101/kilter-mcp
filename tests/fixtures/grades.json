@@ -1,0 +1,392 @@
+[
+  {
+    "difficultyGradeId": 1,
+    "boulderDifficulty": "1A/V0",
+    "routeDifficulty": "2b/5.1",
+    "isListed": false,
+    "fontScale": "1A",
+    "vScale": "V0",
+    "frenchScale": "2b",
+    "ydsScale": "5.1"
+  },
+  {
+    "difficultyGradeId": 2,
+    "boulderDifficulty": "1B/V0",
+    "routeDifficulty": "2c/5.2",
+    "isListed": false,
+    "fontScale": "1B",
+    "vScale": "V0",
+    "frenchScale": "2c",
+    "ydsScale": "5.2"
+  },
+  {
+    "difficultyGradeId": 3,
+    "boulderDifficulty": "1C/V0",
+    "routeDifficulty": "3a/5.3",
+    "isListed": false,
+    "fontScale": "1C",
+    "vScale": "V0",
+    "frenchScale": "3a",
+    "ydsScale": "5.3"
+  },
+  {
+    "difficultyGradeId": 4,
+    "boulderDifficulty": "2A/V0",
+    "routeDifficulty": "3b/5.3",
+    "isListed": false,
+    "fontScale": "2A",
+    "vScale": "V0",
+    "frenchScale": "3b",
+    "ydsScale": "5.3"
+  },
+  {
+    "difficultyGradeId": 5,
+    "boulderDifficulty": "2B/V0",
+    "routeDifficulty": "3c/5.4",
+    "isListed": false,
+    "fontScale": "2B",
+    "vScale": "V0",
+    "frenchScale": "3c",
+    "ydsScale": "5.4"
+  },
+  {
+    "difficultyGradeId": 6,
+    "boulderDifficulty": "2C/V0",
+    "routeDifficulty": "4a/5.5",
+    "isListed": false,
+    "fontScale": "2C",
+    "vScale": "V0",
+    "frenchScale": "4a",
+    "ydsScale": "5.5"
+  },
+  {
+    "difficultyGradeId": 7,
+    "boulderDifficulty": "3A/V0",
+    "routeDifficulty": "4b/5.6",
+    "isListed": false,
+    "fontScale": "3A",
+    "vScale": "V0",
+    "frenchScale": "4b",
+    "ydsScale": "5.6"
+  },
+  {
+    "difficultyGradeId": 8,
+    "boulderDifficulty": "3B/V0",
+    "routeDifficulty": "4c/5.7",
+    "isListed": false,
+    "fontScale": "3B",
+    "vScale": "V0",
+    "frenchScale": "4c",
+    "ydsScale": "5.7"
+  },
+  {
+    "difficultyGradeId": 9,
+    "boulderDifficulty": "3C/V0",
+    "routeDifficulty": "5a/5.8",
+    "isListed": false,
+    "fontScale": "3C",
+    "vScale": "V0",
+    "frenchScale": "5a",
+    "ydsScale": "5.8"
+  },
+  {
+    "difficultyGradeId": 10,
+    "boulderDifficulty": "4A/V0",
+    "routeDifficulty": "5b/5.9",
+    "isListed": true,
+    "fontScale": "4A",
+    "vScale": "V0",
+    "frenchScale": "5b",
+    "ydsScale": "5.9"
+  },
+  {
+    "difficultyGradeId": 11,
+    "boulderDifficulty": "4B/V0",
+    "routeDifficulty": "5c/5.10a",
+    "isListed": true,
+    "fontScale": "4B",
+    "vScale": "V0",
+    "frenchScale": "5c",
+    "ydsScale": "5.10a"
+  },
+  {
+    "difficultyGradeId": 12,
+    "boulderDifficulty": "4C/V0",
+    "routeDifficulty": "6a/5.10b",
+    "isListed": true,
+    "fontScale": "4C",
+    "vScale": "V0",
+    "frenchScale": "6a",
+    "ydsScale": "5.10b"
+  },
+  {
+    "difficultyGradeId": 13,
+    "boulderDifficulty": "5A/V1",
+    "routeDifficulty": "6a+/5.10c",
+    "isListed": true,
+    "fontScale": "5A",
+    "vScale": "V1",
+    "frenchScale": "6a+",
+    "ydsScale": "5.10c"
+  },
+  {
+    "difficultyGradeId": 14,
+    "boulderDifficulty": "5B/V1",
+    "routeDifficulty": "6b/5.10d",
+    "isListed": true,
+    "fontScale": "5B",
+    "vScale": "V1",
+    "frenchScale": "6b",
+    "ydsScale": "5.10d"
+  },
+  {
+    "difficultyGradeId": 15,
+    "boulderDifficulty": "5C/V2",
+    "routeDifficulty": "6b+/5.11a",
+    "isListed": true,
+    "fontScale": "5C",
+    "vScale": "V2",
+    "frenchScale": "6b+",
+    "ydsScale": "5.11a"
+  },
+  {
+    "difficultyGradeId": 16,
+    "boulderDifficulty": "6A/V3",
+    "routeDifficulty": "6c/5.11b",
+    "isListed": true,
+    "fontScale": "6A",
+    "vScale": "V3",
+    "frenchScale": "6c",
+    "ydsScale": "5.11b"
+  },
+  {
+    "difficultyGradeId": 17,
+    "boulderDifficulty": "6A+/V3",
+    "routeDifficulty": "6c+/5.11c",
+    "isListed": true,
+    "fontScale": "6A+",
+    "vScale": "V3",
+    "frenchScale": "6c+",
+    "ydsScale": "5.11c"
+  },
+  {
+    "difficultyGradeId": 18,
+    "boulderDifficulty": "6B/V4",
+    "routeDifficulty": "7a/5.11d",
+    "isListed": true,
+    "fontScale": "6B",
+    "vScale": "V4",
+    "frenchScale": "7a",
+    "ydsScale": "5.11d"
+  },
+  {
+    "difficultyGradeId": 19,
+    "boulderDifficulty": "6B+/V4",
+    "routeDifficulty": "7a+/5.12a",
+    "isListed": true,
+    "fontScale": "6B+",
+    "vScale": "V4",
+    "frenchScale": "7a+",
+    "ydsScale": "5.12a"
+  },
+  {
+    "difficultyGradeId": 20,
+    "boulderDifficulty": "6C/V5",
+    "routeDifficulty": "7b/5.12b",
+    "isListed": true,
+    "fontScale": "6C",
+    "vScale": "V5",
+    "frenchScale": "7b",
+    "ydsScale": "5.12b"
+  },
+  {
+    "difficultyGradeId": 21,
+    "boulderDifficulty": "6C+/V5",
+    "routeDifficulty": "7b+/5.12c",
+    "isListed": true,
+    "fontScale": "6C+",
+    "vScale": "V5",
+    "frenchScale": "7b+",
+    "ydsScale": "5.12c"
+  },
+  {
+    "difficultyGradeId": 22,
+    "boulderDifficulty": "7A/V6",
+    "routeDifficulty": "7c/5.12d",
+    "isListed": true,
+    "fontScale": "7A",
+    "vScale": "V6",
+    "frenchScale": "7c",
+    "ydsScale": "5.12d"
+  },
+  {
+    "difficultyGradeId": 23,
+    "boulderDifficulty": "7A+/V7",
+    "routeDifficulty": "7c+/5.13a",
+    "isListed": true,
+    "fontScale": "7A+",
+    "vScale": "V7",
+    "frenchScale": "7c+",
+    "ydsScale": "5.13a"
+  },
+  {
+    "difficultyGradeId": 24,
+    "boulderDifficulty": "7B/V8",
+    "routeDifficulty": "8a/5.13b",
+    "isListed": true,
+    "fontScale": "7B",
+    "vScale": "V8",
+    "frenchScale": "8a",
+    "ydsScale": "5.13b"
+  },
+  {
+    "difficultyGradeId": 25,
+    "boulderDifficulty": "7B+/V8",
+    "routeDifficulty": "8a+/5.13c",
+    "isListed": true,
+    "fontScale": "7B+",
+    "vScale": "V8",
+    "frenchScale": "8a+",
+    "ydsScale": "5.13c"
+  },
+  {
+    "difficultyGradeId": 26,
+    "boulderDifficulty": "7C/V9",
+    "routeDifficulty": "8b/5.13d",
+    "isListed": true,
+    "fontScale": "7C",
+    "vScale": "V9",
+    "frenchScale": "8b",
+    "ydsScale": "5.13d"
+  },
+  {
+    "difficultyGradeId": 27,
+    "boulderDifficulty": "7C+/V10",
+    "routeDifficulty": "8b+/5.14a",
+    "isListed": true,
+    "fontScale": "7C+",
+    "vScale": "V10",
+    "frenchScale": "8b+",
+    "ydsScale": "5.14a"
+  },
+  {
+    "difficultyGradeId": 28,
+    "boulderDifficulty": "8A/V11",
+    "routeDifficulty": "8c/5.14b",
+    "isListed": true,
+    "fontScale": "8A",
+    "vScale": "V11",
+    "frenchScale": "8c",
+    "ydsScale": "5.14b"
+  },
+  {
+    "difficultyGradeId": 29,
+    "boulderDifficulty": "8A+/V12",
+    "routeDifficulty": "8c+/5.14c",
+    "isListed": true,
+    "fontScale": "8A+",
+    "vScale": "V12",
+    "frenchScale": "8c+",
+    "ydsScale": "5.14c"
+  },
+  {
+    "difficultyGradeId": 30,
+    "boulderDifficulty": "8B/V13",
+    "routeDifficulty": "9a/5.14d",
+    "isListed": true,
+    "fontScale": "8B",
+    "vScale": "V13",
+    "frenchScale": "9a",
+    "ydsScale": "5.14d"
+  },
+  {
+    "difficultyGradeId": 31,
+    "boulderDifficulty": "8B+/V14",
+    "routeDifficulty": "9a+/5.15a",
+    "isListed": true,
+    "fontScale": "8B+",
+    "vScale": "V14",
+    "frenchScale": "9a+",
+    "ydsScale": "5.15a"
+  },
+  {
+    "difficultyGradeId": 32,
+    "boulderDifficulty": "8C/V15",
+    "routeDifficulty": "9b/5.15b",
+    "isListed": true,
+    "fontScale": "8C",
+    "vScale": "V15",
+    "frenchScale": "9b",
+    "ydsScale": "5.15b"
+  },
+  {
+    "difficultyGradeId": 33,
+    "boulderDifficulty": "8C+/V16",
+    "routeDifficulty": "9b+/5.15c",
+    "isListed": true,
+    "fontScale": "8C+",
+    "vScale": "V16",
+    "frenchScale": "9b+",
+    "ydsScale": "5.15c"
+  },
+  {
+    "difficultyGradeId": 34,
+    "boulderDifficulty": "9A/V17",
+    "routeDifficulty": "9c/5.15d",
+    "isListed": false,
+    "fontScale": "9A",
+    "vScale": "V17",
+    "frenchScale": "9c",
+    "ydsScale": "5.15d"
+  },
+  {
+    "difficultyGradeId": 35,
+    "boulderDifficulty": "9A+/V18",
+    "routeDifficulty": "9c+/5.16a",
+    "isListed": false,
+    "fontScale": "9A+",
+    "vScale": "V18",
+    "frenchScale": "9c+",
+    "ydsScale": "5.16a"
+  },
+  {
+    "difficultyGradeId": 36,
+    "boulderDifficulty": "9B/V19",
+    "routeDifficulty": "10a/5.16b",
+    "isListed": false,
+    "fontScale": "9B",
+    "vScale": "V19",
+    "frenchScale": "10a",
+    "ydsScale": "5.16b"
+  },
+  {
+    "difficultyGradeId": 37,
+    "boulderDifficulty": "9B+/V20",
+    "routeDifficulty": "10a+/5.16c",
+    "isListed": false,
+    "fontScale": "9B+",
+    "vScale": "V20",
+    "frenchScale": "10a+",
+    "ydsScale": "5.16c"
+  },
+  {
+    "difficultyGradeId": 38,
+    "boulderDifficulty": "9C/V21",
+    "routeDifficulty": "10b/5.16d",
+    "isListed": false,
+    "fontScale": "9C",
+    "vScale": "V21",
+    "frenchScale": "10b",
+    "ydsScale": "5.16d"
+  },
+  {
+    "difficultyGradeId": 39,
+    "boulderDifficulty": "9C+/V22",
+    "routeDifficulty": "10b+/5.17a",
+    "isListed": false,
+    "fontScale": "9C+",
+    "vScale": "V22",
+    "frenchScale": "10b+",
+    "ydsScale": "5.17a"
+  }
+]
