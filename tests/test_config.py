@@ -52,3 +52,42 @@ def test_redact_explicit_secrets():
     out = redact("error for user with pw s3cr3t and token XYZ", "s3cr3t", "XYZ", "")
     assert "s3cr3t" not in out
     assert "XYZ" not in out
+
+
+def test_resolve_timezone_explicit():
+    from zoneinfo import ZoneInfo
+
+    from kilter_mcp.config import resolve_timezone, timezone_name
+
+    tz = resolve_timezone({"KILTER_TIMEZONE": " Europe/Rome "})
+    assert tz == ZoneInfo("Europe/Rome")
+    assert timezone_name(tz) == "Europe/Rome"
+
+
+def test_resolve_timezone_invalid_is_config_error():
+    from kilter_mcp.config import resolve_timezone
+
+    with pytest.raises(ConfigError, match="KILTER_TIMEZONE"):
+        resolve_timezone({"KILTER_TIMEZONE": "Nowhere/Land"})
+
+
+def test_resolve_timezone_falls_back_to_tz_env_then_host():
+    from datetime import tzinfo
+    from zoneinfo import ZoneInfo
+
+    from kilter_mcp.config import resolve_timezone
+
+    assert resolve_timezone({"TZ": "America/Denver"}) == ZoneInfo("America/Denver")
+    assert resolve_timezone({"TZ": ":Asia/Tokyo"}) == ZoneInfo("Asia/Tokyo")
+    # POSIX-style TZ strings are not IANA names; skipped, host fallback still yields a tzinfo.
+    assert isinstance(resolve_timezone({"TZ": "EST5EDT"}), tzinfo)
+    assert isinstance(resolve_timezone({}), tzinfo)
+
+
+def test_timezone_name_for_fixed_offset():
+    from datetime import timedelta, timezone
+
+    from kilter_mcp.config import timezone_name
+
+    assert timezone_name(timezone.utc) == "UTC"
+    assert timezone_name(timezone(timedelta(hours=2))) == "UTC+02:00"

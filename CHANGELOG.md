@@ -2,6 +2,22 @@
 
 All notable changes to kilter-mcp. Versions follow [Semantic Versioning](https://semver.org).
 
+## 0.2.0 - 2026-09-16
+
+### Changed
+- Sessions, progression periods, project dates and date filters now use the user's timezone
+  instead of UTC, so an evening session no longer splits in two at UTC midnight. The zone is
+  detected from the host (`TZ`, then `/etc/localtime`) and can be overridden with
+  `KILTER_TIMEZONE` (IANA name). Responses include a `timezone` field.
+- Entry `date` values are now local ISO 8601 timestamps with offset (was UTC `...Z`).
+
+### Added
+- `my_difficulty_id`, `my_grade` and `my_rating` on every entry: the user's own grade and
+  1-5 star rating when Kilter returns an embedded `climbRating`, otherwise null.
+- `server.json` and registry metadata; published to the MCP Registry as
+  `io.github.wmmg101/kilter-mcp`.
+- `tzdata` dependency on Windows, where the system has no zoneinfo database.
+
 ## 0.1.1 - 2026-09-16
 
 ### Changed

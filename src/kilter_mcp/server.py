@@ -11,6 +11,7 @@ import inspect
 import sys
 import time
 from collections.abc import Callable
+from datetime import tzinfo
 from typing import Any, TypeVar
 
 from mcp.server import MCPServer
@@ -32,7 +33,7 @@ from kilter_mcp.analytics import (
 )
 from kilter_mcp.auth import AuthError
 from kilter_mcp.client import KilterAPIError, KilterClient
-from kilter_mcp.config import ConfigError, Settings
+from kilter_mcp.config import ConfigError, Settings, resolve_timezone, timezone_name
 from kilter_mcp.grades import GradeTable
 from kilter_mcp.models import LogEntry
 
@@ -55,9 +56,11 @@ INSTRUCTIONS = (
     "Tools for the authenticated user's own Kilter Board logbook (read-only). "
     "Use them whenever the user asks about their Kilter climbing: sessions, sends, flashes, "
     "projects, attempts, wall angles, grades, pyramids, hardest climbs or progress over time. "
-    "Grades are Kilter consensus grades; 'grade' is the V-scale and 'font_grade' the Font scale. "
-    "'status' is 'flash' (topped first try), 'send' (topped) or 'attempt' (not topped). "
-    "Angles are wall angles in degrees (e.g. 20, 30, 40)."
+    "'grade' / 'font_grade' are Kilter's consensus grade for the climb (V-scale / Font scale); "
+    "'my_grade' and 'my_rating' (1-5 stars) are the user's own opinion when they logged one, "
+    "otherwise null. 'status' is 'flash' (topped first try), 'send' (topped) or 'attempt' "
+    "(not topped). Angles are wall angles in degrees (e.g. 20, 30, 40). Dates and sessions "
+    "use the user's timezone, reported in the 'timezone' field."
 )
 
 
@@ -75,11 +78,13 @@ class KilterService:
         *,
         cache_ttl: float = LOGS_CACHE_TTL_SECONDS,
         clock: Callable[[], float] = time.monotonic,
+        tz: tzinfo | None = None,
     ) -> None:
         self._client_factory = client_factory or self._default_factory
         self._client: KilterClient | None = None
         self._cache_ttl = cache_ttl
         self._clock = clock
+        self._tz = tz
         self._cached_logs: list[LogEntry] | None = None
         self._cached_at: float = 0.0
         self._lock = asyncio.Lock()
@@ -87,6 +92,21 @@ class KilterService:
     @staticmethod
     def _default_factory() -> KilterClient:
         return KilterClient(Settings.from_env())
+
+    @property
+    def tz(self) -> tzinfo:
+        """User's timezone for grouping climbs into days. Resolved lazily so a bad
+        KILTER_TIMEZONE is reported as a tool error, not a crash at startup."""
+        if self._tz is None:
+            try:
+                self._tz = resolve_timezone()
+            except ConfigError as exc:
+                raise ToolError(str(exc)) from None
+        return self._tz
+
+    @property
+    def tz_name(self) -> str:
+        return timezone_name(self.tz)
 
     def _get_client(self) -> KilterClient:
         if self._client is None:
@@ -130,9 +150,12 @@ def _check_limit(limit: int | None, default: int, maximum: int = 500) -> int:
     return min(limit, maximum)
 
 
-def _date_range(start_date: str | None, end_date: str | None) -> tuple[Any, Any]:
+def _date_range(start_date: str | None, end_date: str | None, tz: tzinfo) -> tuple[Any, Any]:
     try:
-        return parse_date_arg(start_date), parse_date_arg(end_date, end_of_day=True)
+        return (
+            parse_date_arg(start_date, tz=tz),
+            parse_date_arg(end_date, end_of_day=True, tz=tz),
+        )
     except ValueError as exc:
         raise ToolError(str(exc)) from None
 
@@ -164,13 +187,15 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         start_date/end_date (YYYY-MM-DD, inclusive).
         """
         n = _check_limit(limit, 50)
-        start, end = _date_range(start_date, end_date)
+        tz = svc.tz
+        start, end = _date_range(start_date, end_date, tz)
         logs, grades = await svc.load()
         rows = filter_logs(logs, angle=angle, topped=topped, start=start, end=end)
         return {
+            "timezone": svc.tz_name,
             "total_matching": len(rows),
             "returned": min(n, len(rows)),
-            "entries": [entry_to_dict(e, grades) for e in rows[:n]],
+            "entries": [entry_to_dict(e, grades, tz) for e in rows[:n]],
         }
 
     @_read_only_tool(server, "kilter_get_sends")
@@ -187,13 +212,15 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         (default 50, max 500), angle (degrees), start_date/end_date (YYYY-MM-DD).
         """
         n = _check_limit(limit, 50)
-        start, end = _date_range(start_date, end_date)
+        tz = svc.tz
+        start, end = _date_range(start_date, end_date, tz)
         logs, grades = await svc.load()
         rows = filter_logs(logs, angle=angle, topped=True, start=start, end=end)
         return {
+            "timezone": svc.tz_name,
             "total_matching": len(rows),
             "returned": min(n, len(rows)),
-            "sends": [entry_to_dict(e, grades) for e in rows[:n]],
+            "sends": [entry_to_dict(e, grades, tz) for e in rows[:n]],
         }
 
     @_read_only_tool(server, "kilter_get_projects")
@@ -209,7 +236,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         n = _check_limit(limit, 50)
         logs, grades = await svc.load()
-        rows = projects(logs, grades, angle=angle)
+        rows = projects(logs, grades, angle=angle, tz=svc.tz)
         return {"total_projects": len(rows), "returned": min(n, len(rows)), "projects": rows[:n]}
 
     @_read_only_tool(server, "kilter_get_summary")
@@ -222,7 +249,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         per grade.
         """
         logs, grades = await svc.load()
-        return summary(logs, grades)
+        return {"timezone": svc.tz_name, **summary(logs, grades, tz=svc.tz)}
 
     @_read_only_tool(server, "kilter_get_grade_pyramid")
     async def kilter_get_grade_pyramid(angle: int | None = None) -> dict[str, Any]:
@@ -245,7 +272,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         n = _check_limit(limit, 10, maximum=200)
         logs, grades = await svc.load()
-        return {"hardest_sends": hardest_sends(logs, grades, limit=n, angle=angle)}
+        return {"hardest_sends": hardest_sends(logs, grades, limit=n, angle=angle, tz=svc.tz)}
 
     @_read_only_tool(server, "kilter_get_sessions")
     async def kilter_get_sessions(limit: int | None = 5) -> dict[str, Any]:
@@ -257,7 +284,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         n = _check_limit(limit, 5, maximum=100)
         logs, grades = await svc.load()
-        return {"sessions": sessions(logs, grades, limit=n)}
+        return {"timezone": svc.tz_name, "sessions": sessions(logs, grades, limit=n, tz=svc.tz)}
 
     @_read_only_tool(server, "kilter_get_progression")
     async def kilter_get_progression(
@@ -272,10 +299,10 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         logs, grades = await svc.load()
         try:
-            periods = progression(logs, grades, period=period, angle=angle)
+            periods = progression(logs, grades, period=period, angle=angle, tz=svc.tz)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
-        return {"period": period, "angle": angle, "periods": periods}
+        return {"timezone": svc.tz_name, "period": period, "angle": angle, "periods": periods}
 
     @_read_only_tool(server, "kilter_get_angle_stats")
     async def kilter_get_angle_stats() -> dict[str, Any]:
@@ -286,7 +313,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         attempts, sessions, hardest send/flash and sends per grade.
         """
         logs, grades = await svc.load()
-        return {"angles": angle_stats(logs, grades)}
+        return {"angles": angle_stats(logs, grades, tz=svc.tz)}
 
     return server
 

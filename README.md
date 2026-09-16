@@ -1,5 +1,7 @@
 # kilter-mcp
 
+<!-- mcp-name: io.github.wmmg101/kilter-mcp -->
+
 An unofficial [MCP](https://modelcontextprotocol.io) server that lets your AI agent read and
 analyse **your own Kilter Board logbook**.
 
@@ -55,6 +57,13 @@ handled by `uv`.
 Kiro CLI users can do the same with
 `kiro-cli mcp add --name kilter --scope global --command uvx --args kilter-mcp --env KILTER_USERNAME=... --env KILTER_PASSWORD=...`.
 
+### Optional: timezone
+
+Sessions are grouped by calendar day in your timezone, which is detected from the machine
+running the server. If that is wrong (for example a remote or containerised host), add
+`"KILTER_TIMEZONE": "Europe/Rome"` (any IANA name) to the `env` block. Every response states
+the timezone it used.
+
 ### Other clients
 
 kilter-mcp is a standard local MCP server, so it also works in Claude Desktop, Claude Code,
@@ -102,6 +111,9 @@ All tools are read-only and only ever see the account whose credentials you conf
 - Grades are Kilter's current consensus grade for the climb at that angle. `grade` is the
   V-scale and `font_grade` the Font scale; the raw `difficulty_id` (1-39) is always included.
   The grade table is fetched from Kilter at startup with an embedded fallback.
+- If you rated a climb yourself in the app, `my_grade` and `my_rating` (1-5 stars) carry your
+  opinion; otherwise they are null.
+- Dates are reported in your timezone (see above). A session is one calendar day.
 
 ## Security and privacy
 
@@ -110,6 +122,8 @@ All tools are read-only and only ever see the account whose credentials you conf
 - Tokens are kept in memory for the life of the MCP process and are never written to disk.
 - Credentials and tokens are never included in tool output, logs or error messages.
 - The server makes requests only to `idp.kiltergrips.com` and `portal.kiltergrips.com`.
+- Also available in the [MCP Registry](https://registry.modelcontextprotocol.io) as
+  `io.github.wmmg101/kilter-mcp`.
 - Prefer the `${KILTER_PASSWORD}` form so the password lives in your shell environment or
   secret manager rather than in a JSON file.
 - Your logbook is fetched at most once a minute, however many tools the agent calls, and

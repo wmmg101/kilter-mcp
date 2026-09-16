@@ -26,6 +26,12 @@ REFRESH_1 = "test-refresh-token-1"
 REFRESH_2 = "test-refresh-token-2"
 
 
+@pytest.fixture(autouse=True)
+def _deterministic_timezone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests must not depend on the host's timezone; individual tests override as needed."""
+    monkeypatch.setenv("KILTER_TIMEZONE", "UTC")
+
+
 @pytest.fixture
 def raw_logs() -> list[dict[str, Any]]:
     return json.loads((FIXTURES / "logs.json").read_text())

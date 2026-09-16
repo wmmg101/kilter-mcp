@@ -1,6 +1,6 @@
 [project]
 name = "kilter-mcp"
-version = "0.1.1"
+version = "0.2.0"
 description = "Unofficial MCP server that gives AI agents read-only access to your Kilter Board logbook."
 readme = "README.md"
 license = "MIT"
@@ -22,6 +22,8 @@ classifiers = [
 dependencies = [
     "mcp>=2.2.0,<3",
     "httpx2>=2.13.0,<3",
+    # zoneinfo has no system database on Windows.
+    "tzdata>=2024.1; sys_platform == 'win32'",
 ]
 
 [project.urls]

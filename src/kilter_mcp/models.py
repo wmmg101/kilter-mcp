@@ -7,7 +7,7 @@ get sensible defaults, because these endpoints are not a documented public API.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from typing import Any, Literal
 
 Status = Literal["flash", "send", "attempt"]
@@ -58,6 +58,9 @@ class LogEntry:
     flashed: bool
     created_at: datetime | None
     difficulty_id: int | None
+    # The user's own opinion, from an embedded ``climbRating`` object when Kilter includes one.
+    user_difficulty_id: int | None = None
+    user_rating: int | None = None  # 1-5 stars
 
     @property
     def status(self) -> Status:
@@ -67,10 +70,14 @@ class LogEntry:
             return "send"
         return "attempt"
 
+    def local_date(self, tz: tzinfo = timezone.utc) -> str | None:
+        """Calendar date (YYYY-MM-DD) in ``tz``; this is what defines a 'session'."""
+        return self.created_at.astimezone(tz).date().isoformat() if self.created_at else None
+
     @property
     def date(self) -> str | None:
-        """Calendar date (UTC) as YYYY-MM-DD, used to group sessions."""
-        return self.created_at.date().isoformat() if self.created_at else None
+        """Calendar date in UTC. Prefer ``local_date(tz)`` for anything user-facing."""
+        return self.local_date(timezone.utc)
 
     @classmethod
     def from_api(cls, raw: dict[str, Any]) -> LogEntry:
@@ -79,6 +86,11 @@ class LogEntry:
         attempts = _as_int(raw.get("attempts"), None)
         if attempts is None or attempts < 1:
             attempts = 1
+        rating = raw.get("climbRating")
+        user_difficulty_id = user_rating = None
+        if isinstance(rating, dict):
+            user_difficulty_id = _as_int(rating.get("difficultyGradeId"))
+            user_rating = _as_int(rating.get("rating"))
         return cls(
             log_uuid=str(raw.get("logUuid") or ""),
             climb_uuid=str(raw.get("climbUuid") or ""),
@@ -89,6 +101,8 @@ class LogEntry:
             flashed=flashed,
             created_at=parse_datetime(raw.get("createdAt")),
             difficulty_id=_as_int(raw.get("currentDifficultyId")),
+            user_difficulty_id=user_difficulty_id,
+            user_rating=user_rating,
         )
 
 

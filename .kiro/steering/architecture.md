@@ -26,3 +26,7 @@ Rules
   `(climb_uuid, angle)`; `currentDifficultyId` is the consensus grade.
 - Grades come from `GET /api/grades` (public) with an embedded fallback in `grades.py`.
   Always expose the raw `difficulty_id` alongside any grade label.
+- Anything that turns a timestamp into a calendar day or period takes a `tz: tzinfo`
+  parameter (default UTC) and the server passes `svc.tz`. Never call `.date()` on a UTC
+  datetime for user-facing grouping; use `LogEntry.local_date(tz)`.
+- Tests pin `KILTER_TIMEZONE=UTC` via an autouse fixture; override per test when needed.

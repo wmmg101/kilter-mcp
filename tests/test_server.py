@@ -67,8 +67,12 @@ async def test_get_logs_filters_and_shape(server):
         "difficulty_id",
         "grade",
         "font_grade",
+        "my_difficulty_id",
+        "my_grade",
+        "my_rating",
         "climb_uuid",
     }
+    assert res["timezone"] == "UTC"
 
 
 async def test_get_logs_date_range_and_topped(server):
@@ -218,3 +222,29 @@ async def test_failed_fetch_is_not_cached(fake: FakeKilter, settings: Settings):
         fake.logs_status = 200
         second = await client.call_tool("kilter_get_summary", {})
         assert not second.is_error
+
+
+async def test_kilter_timezone_env_changes_sessions(
+    fake: FakeKilter, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    # 2026-02-10T19:00Z and 19:30Z / 19:45Z are still 10 Feb in Pacific/Auckland (+13 → 08:00
+    # next day!). Use that to prove the env var is honoured end to end.
+    monkeypatch.setenv("KILTER_TIMEZONE", "Pacific/Auckland")
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        res = _payload(await client.call_tool("kilter_get_sessions", {"limit": 1}))
+    assert res["timezone"] == "Pacific/Auckland"
+    assert res["sessions"][0]["date"] == "2026-02-11"
+    assert res["sessions"][0]["climbs"][0]["date"].endswith("+13:00")
+
+
+async def test_invalid_kilter_timezone_is_tool_error(
+    fake: FakeKilter, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("KILTER_TIMEZONE", "Mars/Olympus_Mons")
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        res = await client.call_tool("kilter_get_summary", {})
+    assert res.is_error
+    assert "KILTER_TIMEZONE" in res.content[0].text
+    assert "Europe/Rome" in res.content[0].text

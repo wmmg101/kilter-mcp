@@ -20,8 +20,8 @@
 - [x] 16. Test from Kiro with real credentials (Kiro + integration test both pass)
 - [x] 17. GitHub repo wmmg101/kilter-mcp public; 0.1.0 on PyPI via trusted publishing
 - [x] 18. 0.1.1: 60 s logbook cache, Retry-After handling, SECURITY.md, CHANGELOG
-- [ ] 19. Timezone-aware sessions (`KILTER_TIMEZONE` or host tz)
-- [ ] 20. Surface user's own grade (`climbRating.difficultyGradeId`) if present in live logs
-- [ ] 21. Submit to MCP Registry
+- [x] 19. Timezone-aware sessions (`KILTER_TIMEZONE` or host tz) — 0.2.0
+- [x] 20. Surface user's own grade/rating from embedded `climbRating` — 0.2.0
+- [ ] 21. Publish 0.2.0 to MCP Registry (`server.json`, `mcp-publisher`)
 - [ ] 22. (later) climb catalogue tools
 - [ ] 23. (later) `.mcpb` bundle for Claude Desktop

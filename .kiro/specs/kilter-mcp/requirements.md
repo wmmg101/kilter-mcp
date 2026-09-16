@@ -22,6 +22,9 @@ login command, or database.
 - R1. Read `KILTER_USERNAME` and `KILTER_PASSWORD` from the process environment.
 - R2. If either is missing, tool calls fail with a clear, actionable error; the server
   still starts so Kiro can list tools.
+- R2a. Optional `KILTER_TIMEZONE` (IANA name) sets the timezone used to group climbs into
+  days; default is the host zone (`TZ`, `/etc/localtime`, then current offset). An invalid
+  value is a clear tool error. Every response that involves dates states the timezone.
 
 ### Authentication
 - R3. Authenticate with the Kilter Keycloak realm using the password grant
@@ -62,7 +65,9 @@ login command, or database.
 - Repeat sends produce new rows. Same climb can appear at several angles; identity is
   `(climbUuid, angle)`.
 - `currentDifficultyId` is the climb's current consensus grade at that angle, not the
-  user's personal grade.
+  user's personal grade. The user's own opinion, when present, is an embedded `climbRating`
+  object (`difficultyGradeId`, `rating` 1-5) and is exposed as `my_grade` / `my_rating`.
+- A "session" is a calendar day in the user's timezone (R2a).
 
 ## Non-functional requirements
 

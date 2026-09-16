@@ -58,7 +58,7 @@ def test_entry_to_dict_shape(logs, grades):
     d = entry_to_dict(logs[0], grades)
     assert d == {
         "climb_name": "Test Climb",
-        "date": "2026-01-01T18:00:00Z",
+        "date": "2026-01-01T18:00:00+00:00",
         "angle": 30,
         "attempts": 3,
         "topped": True,
@@ -67,10 +67,121 @@ def test_entry_to_dict_shape(logs, grades):
         "difficulty_id": 10,
         "grade": "V0",
         "font_grade": "4A",
+        "my_difficulty_id": None,
+        "my_grade": None,
+        "my_rating": None,
         "climb_uuid": "test-climb-1",
     }
     # no other UUIDs leak into tool output
     assert not {"user_uuid", "gym_uuid", "wall_uuid", "log_uuid"} & set(d)
+
+
+def test_entry_to_dict_local_time_and_my_grade(grades):
+    from zoneinfo import ZoneInfo
+
+    from kilter_mcp.models import LogEntry
+
+    e = LogEntry.from_api(
+        {
+            "climbUuid": "test-climb-9",
+            "climbName": "Rated",
+            "angle": 40,
+            "topped": True,
+            "attempts": 2,
+            "createdAt": "2026-03-01T02:30:00Z",
+            "currentDifficultyId": 18,
+            "climbRating": {"difficultyGradeId": 19, "rating": 4},
+        }
+    )
+    d = entry_to_dict(e, grades, ZoneInfo("Europe/Rome"))
+    assert d["date"] == "2026-03-01T03:30:00+01:00"
+    assert d["grade"] == "V4"
+    assert (d["my_difficulty_id"], d["my_grade"], d["my_rating"]) == (19, "V4", 4)
+
+
+# -- timezone handling --------------------------------------------------------------------------
+
+
+def _late_night_logs():
+    """Two climbs 30 minutes apart straddling UTC midnight; one evening in Denver."""
+    from kilter_mcp.models import LogEntry
+
+    return [
+        LogEntry.from_api(
+            {
+                "climbUuid": "c1",
+                "climbName": "Before midnight UTC",
+                "angle": 30,
+                "topped": True,
+                "createdAt": "2026-06-11T23:45:00Z",  # 17:45 Denver, 10 Jun
+                "currentDifficultyId": 13,
+            }
+        ),
+        LogEntry.from_api(
+            {
+                "climbUuid": "c2",
+                "climbName": "After midnight UTC",
+                "angle": 30,
+                "topped": True,
+                "createdAt": "2026-06-12T00:15:00Z",  # 18:15 Denver, 10 Jun
+                "currentDifficultyId": 14,
+            }
+        ),
+    ]
+
+
+def test_sessions_split_in_utc_but_not_in_local_timezone(grades):
+    from zoneinfo import ZoneInfo
+
+    logs = _late_night_logs()
+    assert len(sessions(logs, grades)) == 2  # naive UTC grouping splits the evening
+    denver = sessions(logs, grades, tz=ZoneInfo("America/Denver"))
+    assert len(denver) == 1
+    assert denver[0]["date"] == "2026-06-11"
+    assert denver[0]["sends"] == 2
+    assert denver[0]["climbs"][0]["date"].endswith("-06:00")
+
+
+def test_summary_progression_projects_use_timezone(grades):
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("America/Denver")
+    logs = _late_night_logs()
+    assert summary(logs, grades)["session_count"] == 2
+    s = summary(logs, grades, tz=tz)
+    assert s["session_count"] == 1
+    assert s["first_entry"] == s["last_entry"] == "2026-06-11"
+    # progression by week: 2026-06-11 (Thu) and 2026-06-12 (Fri) are the same ISO week
+    # either way, so use a month boundary instead.
+    from kilter_mcp.models import LogEntry
+
+    eom = [
+        LogEntry.from_api(
+            {
+                "climbUuid": "p",
+                "climbName": "Month edge",
+                "angle": 30,
+                "topped": False,
+                "createdAt": "2026-07-01T02:00:00Z",  # 30 Jun 20:00 Denver
+            }
+        )
+    ]
+    assert progression(eom, grades)[0]["period"] == "2026-07"
+    assert progression(eom, grades, tz=tz)[0]["period"] == "2026-06"
+    assert projects(eom, grades, tz=tz)[0]["last_tried"] == "2026-06-30"
+    assert angle_stats(eom, grades, tz=tz)[0]["sessions"] == 1
+
+
+def test_parse_date_arg_uses_timezone():
+    from zoneinfo import ZoneInfo
+
+    tz = ZoneInfo("America/Denver")
+    start = parse_date_arg("2026-06-11", tz=tz)
+    assert start == datetime(2026, 6, 11, 6, 0, tzinfo=timezone.utc)  # 00:00 MDT
+    end = parse_date_arg("2026-06-11", end_of_day=True, tz=tz)
+    assert end.hour == 5 and end.day == 12  # 23:59:59 MDT is 05:59:59Z next day
+    logs = _late_night_logs()
+    assert len(filter_logs(logs, start=start, end=end)) == 2
 
 
 def test_projects_are_per_climb_and_angle(logs, grades):

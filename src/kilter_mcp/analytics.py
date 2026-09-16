@@ -11,20 +11,27 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, tzinfo
 from typing import Any
 
 from kilter_mcp.grades import GradeTable
 from kilter_mcp.models import LogEntry
 
 ClimbKey = tuple[str, int | None]
+UTC = timezone.utc
 
 
 # -- helpers ------------------------------------------------------------------------------------
 
 
-def parse_date_arg(value: str | None, *, end_of_day: bool = False) -> datetime | None:
-    """Parse YYYY-MM-DD (or ISO datetime) into an aware UTC datetime. None passes through."""
+def parse_date_arg(
+    value: str | None, *, end_of_day: bool = False, tz: tzinfo = UTC
+) -> datetime | None:
+    """Parse YYYY-MM-DD (or ISO datetime) into an aware UTC datetime. None passes through.
+
+    A bare date is interpreted as a calendar day in ``tz`` (the user's timezone), so
+    ``start_date="2026-01-08"`` means midnight local time, not midnight UTC.
+    """
     if value is None or not str(value).strip():
         return None
     text = str(value).strip()
@@ -33,32 +40,38 @@ def parse_date_arg(value: str | None, *, end_of_day: bool = False) -> datetime |
     try:
         if len(text) == 10:
             d = date.fromisoformat(text)
-            parsed = datetime(d.year, d.month, d.day, tzinfo=timezone.utc)
+            parsed = datetime(d.year, d.month, d.day, tzinfo=tz)
             if end_of_day:
                 parsed = parsed.replace(hour=23, minute=59, second=59, microsecond=999_999)
-            return parsed
+            return parsed.astimezone(UTC)
         parsed = datetime.fromisoformat(text)
     except ValueError as exc:
         raise ValueError(f"Invalid date {value!r}; use YYYY-MM-DD.") from exc
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=tz)
+    return parsed.astimezone(UTC)
 
 
 def key_of(entry: LogEntry) -> ClimbKey:
     return (entry.climb_uuid, entry.angle)
 
 
-def entry_to_dict(entry: LogEntry, grades: GradeTable) -> dict[str, Any]:
+def entry_to_dict(entry: LogEntry, grades: GradeTable, tz: tzinfo = UTC) -> dict[str, Any]:
+    """Serialise one entry. ``date`` is the local timestamp in ``tz`` (ISO 8601 with offset)."""
+    local = entry.created_at.astimezone(tz) if entry.created_at else None
+    my_grade = grades.get(entry.user_difficulty_id)
     return {
         "climb_name": entry.climb_name,
-        "date": entry.created_at.isoformat().replace("+00:00", "Z") if entry.created_at else None,
+        "date": local.isoformat() if local else None,
         "angle": entry.angle,
         "attempts": entry.attempts,
         "topped": entry.topped,
         "flashed": entry.flashed,
         "status": entry.status,
         **grades.describe(entry.difficulty_id),
+        "my_difficulty_id": entry.user_difficulty_id,
+        "my_grade": my_grade.v_scale if my_grade else None,
+        "my_rating": entry.user_rating,
         "climb_uuid": entry.climb_uuid,
     }
 
@@ -109,7 +122,11 @@ def sends(logs: Iterable[LogEntry]) -> list[LogEntry]:
 
 
 def projects(
-    logs: Iterable[LogEntry], grades: GradeTable, *, angle: int | None = None
+    logs: Iterable[LogEntry],
+    grades: GradeTable,
+    *,
+    angle: int | None = None,
+    tz: tzinfo = UTC,
 ) -> list[dict[str, Any]]:
     """Climbs (per ``(climb_uuid, angle)``) attempted but never topped at that angle."""
     topped_keys = {key_of(e) for e in logs if e.topped}
@@ -129,10 +146,10 @@ def projects(
             {
                 "climb_name": latest.climb_name,
                 "angle": climb_angle,
-                "sessions": len(entries),
+                "sessions": len({e.local_date(tz) for e in entries}),
                 "total_attempts": sum(e.attempts for e in entries),
-                "first_tried": entries[-1].date,
-                "last_tried": latest.date,
+                "first_tried": entries[-1].local_date(tz),
+                "last_tried": latest.local_date(tz),
                 **grades.describe(latest.difficulty_id),
                 "climb_uuid": climb_uuid,
             }
@@ -145,10 +162,10 @@ def projects(
 # -- summary ------------------------------------------------------------------------------------
 
 
-def summary(logs: list[LogEntry], grades: GradeTable) -> dict[str, Any]:
+def summary(logs: list[LogEntry], grades: GradeTable, *, tz: tzinfo = UTC) -> dict[str, Any]:
     sent = [e for e in logs if e.topped]
     flashes = [e for e in sent if e.flashed]
-    dates = [e.created_at for e in logs if e.created_at]
+    days = sorted({d for d in (e.local_date(tz) for e in logs) if d})
     angles = sorted({e.angle for e in logs if e.angle is not None})
     hardest = _max_difficulty(sent)
     hardest_flash = _max_difficulty(flashes)
@@ -160,9 +177,9 @@ def summary(logs: list[LogEntry], grades: GradeTable) -> dict[str, Any]:
         "unique_climbs_sent": len({key_of(e) for e in sent}),
         "total_attempts_reported": sum(e.attempts for e in logs),
         "angles_climbed": angles,
-        "first_entry": min(dates).date().isoformat() if dates else None,
-        "last_entry": max(dates).date().isoformat() if dates else None,
-        "session_count": len({e.date for e in logs if e.date}),
+        "first_entry": days[0] if days else None,
+        "last_entry": days[-1] if days else None,
+        "session_count": len(days),
         "hardest_send": grades.describe(hardest),
         "hardest_flash": grades.describe(hardest_flash),
         "sends_by_grade": _counts_by_grade(sent, grades),
@@ -216,7 +233,12 @@ def grade_pyramid(
 
 
 def hardest_sends(
-    logs: Iterable[LogEntry], grades: GradeTable, *, limit: int = 10, angle: int | None = None
+    logs: Iterable[LogEntry],
+    grades: GradeTable,
+    *,
+    limit: int = 10,
+    angle: int | None = None,
+    tz: tzinfo = UTC,
 ) -> list[dict[str, Any]]:
     """Unique sent climbs ordered by difficulty (desc), then most recent."""
     best: dict[ClimbKey, LogEntry] = {}
@@ -235,7 +257,7 @@ def hardest_sends(
         ),
         reverse=True,
     )
-    return [entry_to_dict(e, grades) for e in ranked[: max(limit, 0)]]
+    return [entry_to_dict(e, grades, tz) for e in ranked[: max(limit, 0)]]
 
 
 def _later(a: LogEntry, b: LogEntry) -> bool:
@@ -248,13 +270,14 @@ def _later(a: LogEntry, b: LogEntry) -> bool:
 
 
 def sessions(
-    logs: Iterable[LogEntry], grades: GradeTable, *, limit: int = 10
+    logs: Iterable[LogEntry], grades: GradeTable, *, limit: int = 10, tz: tzinfo = UTC
 ) -> list[dict[str, Any]]:
-    """Group entries by UTC calendar date; newest session first."""
+    """Group entries by calendar date in ``tz``; newest session first."""
     by_day: dict[str, list[LogEntry]] = defaultdict(list)
     for e in logs:
-        if e.date:
-            by_day[e.date].append(e)
+        day = e.local_date(tz)
+        if day:
+            by_day[day].append(e)
     out: list[dict[str, Any]] = []
     for day in sorted(by_day, reverse=True)[: max(limit, 0)]:
         entries = _sorted_desc(by_day[day])
@@ -268,7 +291,7 @@ def sessions(
                 "flashes": sum(1 for e in sent if e.flashed),
                 "attempts": sum(e.attempts for e in entries),
                 "hardest_send": grades.describe(_max_difficulty(sent)),
-                "climbs": [entry_to_dict(e, grades) for e in entries],
+                "climbs": [entry_to_dict(e, grades, tz) for e in entries],
             }
         )
     return out
@@ -290,15 +313,16 @@ def progression(
     *,
     period: str = "month",
     angle: int | None = None,
+    tz: tzinfo = UTC,
 ) -> list[dict[str, Any]]:
-    """Per month (or ISO week): sends, flashes, sessions, hardest send. Oldest first."""
+    """Per month (or ISO week) in ``tz``: sends, flashes, sessions, hardest send. Oldest first."""
     if period not in ("month", "week"):
         raise ValueError("period must be 'month' or 'week'")
     buckets: dict[str, list[LogEntry]] = defaultdict(list)
     for e in logs:
         if e.created_at is None or (angle is not None and e.angle != angle):
             continue
-        buckets[_period_key(e.created_at, period)].append(e)
+        buckets[_period_key(e.created_at.astimezone(tz), period)].append(e)
     out: list[dict[str, Any]] = []
     for key in sorted(buckets):
         entries = buckets[key]
@@ -306,7 +330,7 @@ def progression(
         out.append(
             {
                 "period": key,
-                "sessions": len({e.date for e in entries}),
+                "sessions": len({e.local_date(tz) for e in entries}),
                 "entries": len(entries),
                 "sends": len(sent),
                 "unique_climbs_sent": len({key_of(e) for e in sent}),
@@ -322,7 +346,9 @@ def progression(
 # -- angle stats --------------------------------------------------------------------------------
 
 
-def angle_stats(logs: Iterable[LogEntry], grades: GradeTable) -> list[dict[str, Any]]:
+def angle_stats(
+    logs: Iterable[LogEntry], grades: GradeTable, *, tz: tzinfo = UTC
+) -> list[dict[str, Any]]:
     """One row per wall angle so the agent can compare e.g. 20° vs 30°."""
     by_angle: dict[int | None, list[LogEntry]] = defaultdict(list)
     for e in logs:
@@ -341,7 +367,7 @@ def angle_stats(logs: Iterable[LogEntry], grades: GradeTable) -> list[dict[str, 
                 "flashes": len(flashes),
                 "flash_rate": round(len(flashes) / len(sent), 3) if sent else 0.0,
                 "attempts": sum(e.attempts for e in entries),
-                "sessions": len({e.date for e in entries if e.date}),
+                "sessions": len({d for d in (e.local_date(tz) for e in entries) if d}),
                 "hardest_send": grades.describe(_max_difficulty(sent)),
                 "hardest_flash": grades.describe(_max_difficulty(flashes)),
                 "sends_by_grade": _counts_by_grade(sent, grades),

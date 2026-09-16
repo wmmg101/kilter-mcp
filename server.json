@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.wmmg101/kilter-mcp",
+  "title": "Kilter Board Logbook",
+  "description": "Read-only access to your Kilter Board logbook: sessions, sends, projects and grade stats",
+  "websiteUrl": "https://github.com/wmmg101/kilter-mcp",
+  "repository": {
+    "url": "https://github.com/wmmg101/kilter-mcp",
+    "source": "github",
+    "id": "1372773298"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "kilter-mcp",
+      "version": "0.2.0",
+      "runtimeHint": "uvx",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "KILTER_USERNAME",
+          "description": "Kilter Board account username or email",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "KILTER_PASSWORD",
+          "description": "Kilter Board account password",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "KILTER_TIMEZONE",
+          "description": "IANA timezone for grouping climbs into days (default: host timezone)",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string",
+          "placeholder": "Europe/Rome"
+        }
+      ]
+    }
+  ]
+}

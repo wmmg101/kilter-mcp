@@ -73,3 +73,37 @@ def test_grade_table_lookups(grades: GradeTable):
     assert grades.describe(18) == {"difficulty_id": 18, "grade": "V4", "font_grade": "6B"}
     assert grades.describe(None) == {"difficulty_id": None, "grade": None, "font_grade": None}
     assert grades.describe(999)["grade"] is None
+
+
+def test_log_entry_parses_embedded_climb_rating():
+    e = LogEntry.from_api(
+        {
+            "climbUuid": "test-climb-7",
+            "topped": True,
+            "createdAt": "2026-01-01T18:00:00Z",
+            "currentDifficultyId": 16,
+            "climbRating": {
+                "climbRatingUuid": "test-rating",
+                "difficultyGradeId": 17,
+                "rating": 5,
+                "comment": "great",
+            },
+        }
+    )
+    assert e.difficulty_id == 16
+    assert e.user_difficulty_id == 17
+    assert e.user_rating == 5
+
+
+def test_log_entry_without_or_malformed_climb_rating():
+    assert LogEntry.from_api({"topped": True}).user_difficulty_id is None
+    assert LogEntry.from_api({"topped": True, "climbRating": None}).user_rating is None
+    assert LogEntry.from_api({"topped": True, "climbRating": "n/a"}).user_rating is None
+
+
+def test_local_date_respects_timezone():
+    from zoneinfo import ZoneInfo
+
+    e = LogEntry.from_api({"topped": True, "createdAt": "2026-06-12T00:15:00Z"})
+    assert e.date == "2026-06-12"
+    assert e.local_date(ZoneInfo("America/Denver")) == "2026-06-11"
