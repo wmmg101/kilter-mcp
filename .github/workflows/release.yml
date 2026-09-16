@@ -52,3 +52,6 @@ jobs:
           path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Re-pushing an existing tag (e.g. after a history rewrite) is a no-op, not a failure.
+          skip-existing: true
