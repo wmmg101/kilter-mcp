@@ -17,7 +17,11 @@
 - [x] 13. README (user-first, Add-to-Kiro button), CONTRIBUTING.md, LICENSE, CI workflow
 - [x] 14. Verify: wheel via `uvx --from dist/…`, stdio handshake, ruff, pytest
 - [x] 15. Security audit of tree (no secrets, UUIDs, emails)
-- [ ] 16. Test from Kiro with real credentials (user: add local mcp.json, ask the agent)
-- [ ] 17. Confirm GitHub org/repo URL, first commit, push, publish to PyPI
-- [ ] 18. (later) short in-memory cache of logs if tool chatter makes fetches noisy
-- [ ] 19. (later) climb catalogue tools
+- [x] 16. Test from Kiro with real credentials (Kiro + integration test both pass)
+- [x] 17. GitHub repo wmmg101/kilter-mcp public; 0.1.0 on PyPI via trusted publishing
+- [x] 18. 0.1.1: 60 s logbook cache, Retry-After handling, SECURITY.md, CHANGELOG
+- [ ] 19. Timezone-aware sessions (`KILTER_TIMEZONE` or host tz)
+- [ ] 20. Surface user's own grade (`climbRating.difficultyGradeId`) if present in live logs
+- [ ] 21. Submit to MCP Registry
+- [ ] 22. (later) climb catalogue tools
+- [ ] 23. (later) `.mcpb` bundle for Claude Desktop

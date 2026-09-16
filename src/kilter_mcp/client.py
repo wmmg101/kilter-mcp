@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx2
@@ -32,8 +36,14 @@ class KilterClient:
         http: httpx2.AsyncClient | None = None,
         *,
         token_manager: TokenManager | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        max_rate_limit_retries: int = 2,
+        max_retry_after_seconds: float = 30.0,
     ) -> None:
         self._settings = settings
+        self._sleep = sleep
+        self._max_rate_limit_retries = max_rate_limit_retries
+        self._max_retry_after_seconds = max_retry_after_seconds
         self._owns_http = http is None
         self._http = http or httpx2.AsyncClient(
             timeout=settings.timeout_seconds,
@@ -85,6 +95,20 @@ class KilterClient:
             self._tokens.invalidate()
             token = await self._tokens.get_access_token()
             response = await self._request(url, token)
+
+        retries = 0
+        while response.status_code == 429 and retries < self._max_rate_limit_retries:
+            delay = _retry_after_seconds(response)
+            if delay is None or delay > self._max_retry_after_seconds:
+                break
+            await self._sleep(delay)
+            retries += 1
+            response = await self._request(url, token)
+
+        if response.status_code == 429:
+            raise KilterAPIError(
+                "Kilter is rate-limiting requests right now. Wait a minute and try again."
+            )
         if response.status_code >= 400:
             raise KilterAPIError(
                 f"Kilter API request failed with HTTP {response.status_code} for {url}."
@@ -107,6 +131,23 @@ class KilterClient:
             raise KilterAPIError(
                 f"Network error talking to Kilter: {redact(str(exc), token)}"
             ) from None
+
+
+def _retry_after_seconds(response: httpx2.Response) -> float | None:
+    """Parse Retry-After (delta-seconds or HTTP-date). None if absent or unparseable."""
+    raw = response.headers.get("Retry-After")
+    if raw is None:
+        return None
+    raw = raw.strip()
+    if raw.isdigit():
+        return float(raw)
+    try:
+        when = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
 
 
 def _extract_rows(payload: Any) -> list[Any]:

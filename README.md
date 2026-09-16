@@ -112,6 +112,10 @@ All tools are read-only and only ever see the account whose credentials you conf
 - The server makes requests only to `idp.kiltergrips.com` and `portal.kiltergrips.com`.
 - Prefer the `${KILTER_PASSWORD}` form so the password lives in your shell environment or
   secret manager rather than in a JSON file.
+- Your logbook is fetched at most once a minute, however many tools the agent calls, and
+  Kilter's rate-limit responses are respected.
+
+Full details and how to report a problem privately: [SECURITY.md](SECURITY.md).
 
 ## Disclaimer
 

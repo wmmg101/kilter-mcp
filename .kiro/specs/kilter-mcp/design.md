@@ -32,8 +32,13 @@ Rules
 
 - `kilter-mcp` console script → `kilter_mcp.server:main` → `MCPServer.run("stdio")`.
 - Server holds one lazily-created `KilterClient` for the process lifetime.
-- Logs are fetched per tool call (v0.1; a short in-memory TTL cache is a later
-  optimisation if needed). Grades fetched once and cached.
+- `KilterService` caches the logbook for 60 s (`LOGS_CACHE_TTL_SECONDS`) behind an
+  `asyncio.Lock`, so one agent question that fans out into several tools costs one fetch and
+  concurrent calls share an in-flight fetch. Failed fetches are not cached. Grades are fetched
+  once per process.
+- `KilterClient` retries HTTP 429 after `Retry-After` (delta-seconds or HTTP-date), at most
+  `max_rate_limit_retries` (2) times and only when the delay is ≤ 30 s; otherwise it raises a
+  clear rate-limited `KilterAPIError`. `sleep` is injectable for tests.
 - Errors are converted to a plain error message (`ToolError`-style string); messages
   never include credentials or headers.
 

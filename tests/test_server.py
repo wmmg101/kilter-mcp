@@ -162,3 +162,59 @@ async def test_no_secrets_in_any_tool_output(server):
     blob = "\n".join(outputs)
     for secret in (TEST_PASSWORD, ACCESS_1, REFRESH_1, "Bearer", "test-user", "test-gym"):
         assert secret not in blob
+
+
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def _log_fetches(fake: FakeKilter) -> int:
+    from kilter_mcp.endpoints import LOGS_URL
+
+    return sum(1 for r in fake.requests if str(r.url) == LOGS_URL)
+
+
+async def test_logs_are_cached_across_tool_calls(fake: FakeKilter, settings: Settings):
+    clock = FakeClock()
+    service = KilterService(
+        lambda: KilterClient(settings, fake.http()), cache_ttl=60.0, clock=clock
+    )
+    server = create_server(service)
+    async with Client(server) as client:
+        await client.call_tool("kilter_get_summary", {})
+        await client.call_tool("kilter_get_sends", {})
+        await client.call_tool("kilter_get_projects", {})
+        assert _log_fetches(fake) == 1
+        clock.now += 61
+        await client.call_tool("kilter_get_sessions", {})
+        assert _log_fetches(fake) == 2
+
+
+async def test_concurrent_tool_calls_share_one_fetch(fake: FakeKilter, settings: Settings):
+    import asyncio
+
+    service = KilterService(lambda: KilterClient(settings, fake.http()))
+    server = create_server(service)
+    async with Client(server) as client:
+        await asyncio.gather(
+            client.call_tool("kilter_get_summary", {}),
+            client.call_tool("kilter_get_angle_stats", {}),
+            client.call_tool("kilter_get_grade_pyramid", {}),
+        )
+    assert _log_fetches(fake) == 1
+
+
+async def test_failed_fetch_is_not_cached(fake: FakeKilter, settings: Settings):
+    fake.logs_status = 500
+    service = KilterService(lambda: KilterClient(settings, fake.http()))
+    server = create_server(service)
+    async with Client(server) as client:
+        first = await client.call_tool("kilter_get_summary", {})
+        assert first.is_error
+        fake.logs_status = 200
+        second = await client.call_tool("kilter_get_summary", {})
+        assert not second.is_error

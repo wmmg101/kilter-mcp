@@ -64,6 +64,9 @@ class FakeKilter:
     grades_status: int = 200
     logs_status: int = 200
     reject_tokens: set[str] = field(default_factory=set)
+    # Each entry is a Retry-After header value (or None for no header) to send with a 429
+    # before the logs endpoint starts answering 200. Consumed in order.
+    rate_limit_queue: list[str | None] = field(default_factory=list)
     requests: list[httpx2.Request] = field(default_factory=list)
     token_calls: list[dict[str, str]] = field(default_factory=list)
     _issued: int = 0
@@ -88,6 +91,10 @@ class FakeKilter:
             token = auth.removeprefix("Bearer ").strip()
             if not token or token in self.reject_tokens:
                 return httpx2.Response(401, json={"error": "unauthorized"})
+            if self.rate_limit_queue:
+                retry_after = self.rate_limit_queue.pop(0)
+                headers = {} if retry_after is None else {"Retry-After": retry_after}
+                return httpx2.Response(429, headers=headers, json={"error": "rate limited"})
             if self.logs_status != 200:
                 return httpx2.Response(self.logs_status, json={"error": "boom"})
             return httpx2.Response(200, json=self.raw_logs)

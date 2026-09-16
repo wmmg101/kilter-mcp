@@ -91,6 +91,8 @@ prints entries. It is skipped in CI and by default.
 
 ## Security requirements for every change
 
+See [SECURITY.md](SECURITY.md) for what we promise users; keep it true.
+
 - Never log or return passwords, access tokens, refresh tokens or `Authorization` headers.
 - Wrap text from exceptions/responses with `config.redact()` before surfacing it.
 - No real UUIDs, emails, tokens or API dumps in fixtures, tests, docs or git history.
@@ -98,9 +100,11 @@ prints entries. It is skipped in CI and by default.
 
 ## Releasing (maintainers)
 
-```bash
-uv build
-uv publish
-```
+Releases are published to PyPI by GitHub Actions through Trusted Publishing; no tokens are
+involved and nobody publishes from a laptop.
 
-Bump `version` in `pyproject.toml` and `src/kilter_mcp/__init__.py` together.
+1. Bump `version` in `pyproject.toml` and `src/kilter_mcp/__init__.py` together, and add a
+   section to `CHANGELOG.md`.
+2. Commit, then `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+3. `release.yml` checks the tag matches the version, runs lint and tests, builds, publishes.
+4. Create the GitHub release: `gh release create vX.Y.Z --title "kilter-mcp X.Y.Z" --notes-file <(sed -n '/^## X.Y.Z/,/^## /p' CHANGELOG.md)`.

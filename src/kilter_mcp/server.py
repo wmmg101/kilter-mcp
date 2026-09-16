@@ -6,8 +6,10 @@ run pure analytics, return structured data. No OAuth or raw HTTP lives here.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import sys
+import time
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -59,12 +61,28 @@ INSTRUCTIONS = (
 )
 
 
+# One agent question usually fans out into several tool calls within a few seconds. Serve
+# them from one logbook fetch so Kilter sees one request per question, not one per tool.
+LOGS_CACHE_TTL_SECONDS = 60.0
+
+
 class KilterService:
     """Owns the single client for the process and turns failures into safe messages."""
 
-    def __init__(self, client_factory: Any = None) -> None:
+    def __init__(
+        self,
+        client_factory: Any = None,
+        *,
+        cache_ttl: float = LOGS_CACHE_TTL_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._client_factory = client_factory or self._default_factory
         self._client: KilterClient | None = None
+        self._cache_ttl = cache_ttl
+        self._clock = clock
+        self._cached_logs: list[LogEntry] | None = None
+        self._cached_at: float = 0.0
+        self._lock = asyncio.Lock()
 
     @staticmethod
     def _default_factory() -> KilterClient:
@@ -82,10 +100,21 @@ class KilterService:
         client = self._get_client()
         try:
             grades = await client.get_grades()
-            logs = await client.get_logs()
+            logs = await self._logs(client)
         except (AuthError, KilterAPIError) as exc:
             raise ToolError(str(exc)) from None
         return logs, grades
+
+    async def _logs(self, client: KilterClient) -> list[LogEntry]:
+        # The lock makes concurrent tool calls share one fetch instead of racing.
+        async with self._lock:
+            now = self._clock()
+            if self._cached_logs is not None and now - self._cached_at < self._cache_ttl:
+                return self._cached_logs
+            logs = await client.get_logs()
+            self._cached_logs = logs
+            self._cached_at = now
+            return logs
 
     async def aclose(self) -> None:
         if self._client is not None:
