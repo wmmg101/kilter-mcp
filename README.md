@@ -3,7 +3,8 @@
 An unofficial [MCP](https://modelcontextprotocol.io) server that lets your AI agent read and
 analyse **your own Kilter Board logbook**.
 
-Add it to [Kiro](https://kiro.dev), give it your Kilter login, and then just talk to the agent:
+Add it to [Kiro](https://kiro.dev) (or [another MCP client](docs/clients.md)), give it your
+Kilter login, and then just talk to the agent:
 
 > How did my last Kilter session go?
 > What are my current projects at 30°?
@@ -52,6 +53,13 @@ handled by `uv`.
 
 Kiro CLI users can do the same with
 `kiro-cli mcp add --name kilter --scope global --command uvx --args kilter-mcp --env KILTER_USERNAME=... --env KILTER_PASSWORD=...`.
+
+### Other clients
+
+kilter-mcp is a standard local MCP server, so it also works in Claude Desktop, Claude Code,
+Codex, Cursor, VS Code, Windsurf, Gemini CLI and Zed. Copy-paste configs for each are in
+[docs/clients.md](docs/clients.md). (ChatGPT's chat interface only accepts remote HTTP
+servers, so it is not supported directly; details in the same document.)
 
 ## Example questions
 
