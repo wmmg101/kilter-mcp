@@ -1,0 +1,42 @@
+name: Bug report
+description: Something doesn't work or a number looks wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you paste anything:** never include your Kilter password, access/refresh
+        tokens, `Authorization` headers, or a full `mcp.json` that contains credentials.
+        Replace secrets with `***`. If you already pasted one, edit it out and change your
+        Kilter password.
+
+        Security problems (a way for credentials to leak) should be reported privately
+        instead: https://github.com/wmmg101/kilter-mcp/security/advisories/new
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you ask the agent, and what did it get back? If a number is wrong, what does the Kilter app show instead?
+    validations:
+      required: true
+  - type: textarea
+    id: check
+    attributes:
+      label: Output of `uvx kilter-mcp --check`
+      description: Run it with the same KILTER_USERNAME / KILTER_PASSWORD (and KILTER_TIMEZONE if set) exported in your shell. It prints only counts and a masked username; it is safe to paste.
+      render: text
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and version
+      placeholder: Kiro 1.x / Claude Code 2.x / Cursor ...
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15 / Windows 11 / Ubuntu 24.04
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Error messages the agent showed (secrets removed), timezone, wall angle, approximate logbook size.

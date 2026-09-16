@@ -18,9 +18,26 @@ from kilter_mcp.endpoints import CLIENT_ID, SCOPE, TOKEN_URL
 # Refresh this many seconds before the access token actually expires.
 EXPIRY_MARGIN_SECONDS = 60.0
 
+# After a rejected password grant, don't try again for this long. One agent question fans out
+# into several tool calls; without this, a mistyped password becomes a burst of failed logins
+# that can trip Keycloak's brute-force protection and lock the user's Kilter account.
+LOGIN_FAILURE_COOLDOWN_SECONDS = 60.0
+
 
 class AuthError(RuntimeError):
-    """Authentication with Kilter failed. Message is safe to show to the agent."""
+    """Authentication with Kilter failed. Message is safe to show to the agent.
+
+    ``rejected`` is True when Keycloak answered and refused the grant (bad credentials,
+    disabled account), as opposed to a network failure or a malformed response.
+    """
+
+    def __init__(self, message: str, *, rejected: bool = False) -> None:
+        super().__init__(message)
+        self.rejected = rejected
+
+
+def _is_credential_rejection(exc: AuthError) -> bool:
+    return exc.rejected
 
 
 class TokenManager:
@@ -30,13 +47,17 @@ class TokenManager:
         http: httpx2.AsyncClient,
         *,
         clock: Callable[[], float] = time.monotonic,
+        login_failure_cooldown: float = LOGIN_FAILURE_COOLDOWN_SECONDS,
     ) -> None:
         self._settings = settings
         self._http = http
         self._clock = clock
+        self._cooldown = login_failure_cooldown
         self._access_token: str | None = None
         self._refresh_token: str | None = None
         self._expires_at: float = 0.0
+        self._login_blocked_until: float = 0.0
+        self._last_login_error: str | None = None
 
     def __repr__(self) -> str:
         state = "authenticated" if self._access_token else "unauthenticated"
@@ -75,19 +96,34 @@ class TokenManager:
         self._expires_at = 0.0
 
     async def _password_grant(self) -> None:
-        await self._token_request(
-            {
-                "grant_type": "password",
-                "client_id": CLIENT_ID,
-                "username": self._settings.username,
-                "password": self._settings.password,
-                "scope": SCOPE,
-            },
-            failure_hint=(
-                "Kilter login failed. Check KILTER_USERNAME and KILTER_PASSWORD in your "
-                "Kiro MCP configuration."
-            ),
-        )
+        now = self._clock()
+        if self._last_login_error is not None and now < self._login_blocked_until:
+            remaining = int(self._login_blocked_until - now) + 1
+            raise AuthError(
+                f"{self._last_login_error} Not retrying for {remaining}s to protect the "
+                "account from lockout; fix the credentials and try again after that."
+            )
+        try:
+            await self._token_request(
+                {
+                    "grant_type": "password",
+                    "client_id": CLIENT_ID,
+                    "username": self._settings.username,
+                    "password": self._settings.password,
+                    "scope": SCOPE,
+                },
+                failure_hint=(
+                    "Kilter login failed. Check KILTER_USERNAME and KILTER_PASSWORD in your "
+                    "Kiro MCP configuration."
+                ),
+            )
+        except AuthError as exc:
+            if _is_credential_rejection(exc):
+                self._last_login_error = str(exc)
+                self._login_blocked_until = self._clock() + self._cooldown
+            raise
+        self._last_login_error = None
+        self._login_blocked_until = 0.0
 
     async def _refresh(self) -> None:
         await self._token_request(
@@ -127,7 +163,11 @@ class TokenManager:
         if status == 0:
             raise AuthError(f"{failure_hint} Network error: {network_error}") from None
         if status != 200:
-            raise AuthError(f"{failure_hint} ({status}{_error_detail(payload)})") from None
+            # 400/401 from Keycloak means it evaluated and refused the grant; 5xx/429 do not.
+            raise AuthError(
+                f"{failure_hint} ({status}{_error_detail(payload)})",
+                rejected=status in (400, 401, 403),
+            ) from None
         if not isinstance(payload, dict):
             raise AuthError(f"{failure_hint} Unexpected non-JSON response.") from None
 

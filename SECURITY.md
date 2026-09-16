@@ -22,12 +22,26 @@ problem.
   step, and the code is structured so a Python traceback's failing frame does not hold the
   password (tests enforce both).
 
+- After a rejected login the server waits 60 seconds before trying again, however many
+  tools the agent calls in between. A mistyped password therefore cannot turn into a burst of
+  failed logins that trips Kilter's account-lockout protection.
+- `kilter-mcp --check` exists so you can troubleshoot without pasting configs around: it
+  prints counts and a masked username only.
+
 ## What it cannot protect you from
 
 - Your MCP client's configuration file. If you put the password directly in `mcp.json`
   (rather than an environment-variable placeholder), anyone who can read that file can read
   the password. Keep such files out of version control and prefer the `${VAR}` form where
   your client supports it; see [docs/clients.md](docs/clients.md).
+- The process environment. MCP clients pass credentials to local servers as environment
+  variables, which other processes running as the same OS user can read (for example with
+  `ps` on macOS/Linux). This is how every stdio MCP server receives configuration; there is no
+  more private channel available to us.
+- Full-account access. Kilter does not offer scoped or read-only tokens, so the token this
+  server obtains could in principle do anything your account can. The server only ever
+  issues read requests, and the code that talks to Kilter is small enough to audit
+  (`src/kilter_mcp/client.py`, `auth.py`, `endpoints.py`).
 - The AI model you are talking to. Tool output (your climbs, grades, dates) is sent to
   whatever model your client uses. Credentials are not, but your climbing history is.
 - Kilter's own systems and terms. This is an unofficial client; see the disclaimer in the

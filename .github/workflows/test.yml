@@ -10,11 +10,19 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: test (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         python-version: ["3.10", "3.12", "3.14"]
+        include:
+          # Users run this on all three; zoneinfo/tzdata and process handling differ per OS.
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -31,4 +39,19 @@ jobs:
       - name: Build wheel and sdist
         run: uv build
       - name: Smoke-test the console script
-        run: uv run kilter-mcp --help
+        run: |
+          uv run kilter-mcp --version
+          uv run kilter-mcp --help
+
+  # Single required status check for branch protection, regardless of matrix shape.
+  ci:
+    if: always()
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: All matrix jobs passed
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "test matrix result: ${{ needs.test.result }}" >&2
+            exit 1
+          fi

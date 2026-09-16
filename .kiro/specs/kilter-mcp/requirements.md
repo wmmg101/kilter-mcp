@@ -33,6 +33,11 @@ login command, or database.
 - R5. Refresh the access token before/when it expires using the refresh token; adopt a
   rotated refresh token if Kilter returns one.
 - R6. If refresh fails, fall back to a fresh password login once.
+- R6a. After Keycloak rejects a password grant (400/401/403), do not attempt another login
+  for 60 s; surface the original reason plus the remaining wait. Network and 5xx failures
+  are not "rejections" and do not trigger the cooldown. Protects against account lockout.
+- R6b. `kilter-mcp --check` prints a diagnostic (masked username, timezone, grade source,
+  entry/send/session counts, most recent day) with no entries and no secrets.
 
 ### Data
 - R7. Fetch logbook rows from `GET /api/logs` and parse them into typed models.

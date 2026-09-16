@@ -2,6 +2,23 @@
 
 All notable changes to kilter-mcp. Versions follow [Semantic Versioning](https://semver.org).
 
+## 0.2.1 - 2026-09-16
+
+### Security
+- After Kilter rejects a login (wrong password, disabled account) the server does not retry
+  for 60 seconds, however many tool calls arrive, and reports the original reason plus the
+  wait. Prevents a mistyped password from triggering Keycloak's brute-force lockout on the
+  user's Kilter account. Network errors and 5xx responses do not trigger the cooldown.
+- `SECURITY.md` now states the two limitations inherent to stdio MCP servers: credentials
+  live in the process environment, and Kilter offers no read-only tokens.
+
+### Added
+- `kilter-mcp --check`: logs in, fetches the logbook and prints counts, timezone and a masked
+  username. No entries, no secrets. Exit code 0 on success, 1 otherwise.
+- CI now runs on Windows and macOS as well as Linux (Python 3.10, 3.12, 3.14).
+- Dependabot for Python dependencies and GitHub Actions; issue templates with a
+  "never paste credentials" warning; `CODE_OF_CONDUCT.md`.
+
 ## 0.2.0 - 2026-09-16
 
 ### Changed

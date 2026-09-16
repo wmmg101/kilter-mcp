@@ -1,0 +1,20 @@
+name: Feature request
+description: A question you'd like to ask the agent that it can't answer today
+labels: [enhancement]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: What would you ask the agent?
+      description: Phrase it the way you'd type it, e.g. "Which V4s at 40° have I tried but not sent?"
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What would you do with the answer?
+  - type: textarea
+    id: data
+    attributes:
+      label: Is the data already in your logbook?
+      description: kilter-mcp only sees your own logbook today (no climb catalogue). If the answer needs data beyond that, say so.

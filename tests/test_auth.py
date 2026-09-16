@@ -135,3 +135,57 @@ async def test_failing_frame_locals_never_hold_secrets(fake: FakeKilter, setting
         assert "grant_type" not in blob
     else:
         raise AssertionError("expected AuthError")
+
+
+async def test_rejected_login_is_not_retried_during_cooldown(fake: FakeKilter, settings: Settings):
+    fake.password_ok = False
+    clock = Clock()
+    tm = TokenManager(settings, fake.http(), clock=clock, login_failure_cooldown=60)
+    with pytest.raises(AuthError, match="invalid_grant"):
+        await tm.get_access_token()
+    # A burst of further calls must not reach Keycloak.
+    for _ in range(5):
+        with pytest.raises(AuthError) as info:
+            await tm.get_access_token()
+        assert "Not retrying" in str(info.value)
+        assert "invalid_grant" in str(info.value)  # original reason still shown
+    assert len(fake.token_calls) == 1
+    # After the cooldown, a corrected password is tried again and succeeds.
+    clock.now += 61
+    fake.password_ok = True
+    assert await tm.get_access_token() == ACCESS_1
+    assert len(fake.token_calls) == 2
+
+
+async def test_network_failure_does_not_trigger_cooldown(settings: Settings):
+    import httpx2
+
+    attempts = 0
+
+    def flaky(request: httpx2.Request) -> httpx2.Response:
+        nonlocal attempts
+        attempts += 1
+        raise httpx2.ConnectError("offline")
+
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(flaky))
+    tm = TokenManager(settings, http, clock=Clock())
+    for _ in range(3):
+        with pytest.raises(AuthError) as info:
+            await tm.get_access_token()
+        assert "Not retrying" not in str(info.value)
+    assert attempts == 3
+
+
+async def test_server_error_does_not_trigger_cooldown(settings: Settings):
+    import httpx2
+
+    http = httpx2.AsyncClient(
+        transport=httpx2.MockTransport(lambda r: httpx2.Response(503, json={"error": "down"}))
+    )
+    tm = TokenManager(settings, http, clock=Clock())
+    with pytest.raises(AuthError) as first:
+        await tm.get_access_token()
+    assert first.value.rejected is False
+    with pytest.raises(AuthError) as second:
+        await tm.get_access_token()
+    assert "Not retrying" not in str(second.value)

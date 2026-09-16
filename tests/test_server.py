@@ -248,3 +248,63 @@ async def test_invalid_kilter_timezone_is_tool_error(
     assert res.is_error
     assert "KILTER_TIMEZONE" in res.content[0].text
     assert "Europe/Rome" in res.content[0].text
+
+
+# -- --check diagnostic -------------------------------------------------------------------------
+
+
+async def test_check_reports_counts_without_secrets(
+    fake: FakeKilter, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    from kilter_mcp.server import run_check
+    from tests.conftest import TEST_USERNAME
+
+    monkeypatch.setenv("KILTER_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("KILTER_PASSWORD", TEST_PASSWORD)
+    code, report = await run_check(KilterService(lambda: KilterClient(settings, fake.http())))
+    assert code == 0
+    assert "result:    ok" in report
+    assert "9 entries, 6 sends, 4 sessions, most recent 2026-02-10" in report
+    assert "39 grades from api" in report
+    assert "timezone:  UTC" in report
+    assert "te***@example.invalid" in report
+    for secret in (TEST_PASSWORD, ACCESS_1, REFRESH_1, TEST_USERNAME, "Test Climb"):
+        assert secret not in report
+
+
+async def test_check_reports_missing_config(monkeypatch: pytest.MonkeyPatch):
+    from kilter_mcp.server import run_check
+
+    monkeypatch.delenv("KILTER_USERNAME", raising=False)
+    monkeypatch.delenv("KILTER_PASSWORD", raising=False)
+    code, report = await run_check()
+    assert code == 1
+    assert "config:    FAILED" in report
+    assert "KILTER_USERNAME" in report
+
+
+async def test_check_reports_login_failure(
+    fake: FakeKilter, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    from kilter_mcp.server import run_check
+    from tests.conftest import TEST_USERNAME
+
+    monkeypatch.setenv("KILTER_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("KILTER_PASSWORD", TEST_PASSWORD)
+    fake.password_ok = False
+    code, report = await run_check(KilterService(lambda: KilterClient(settings, fake.http())))
+    assert code == 1
+    assert "kilter:    FAILED" in report
+    assert "login failed" in report.lower()
+    assert TEST_PASSWORD not in report
+
+
+def test_main_check_flag_exits_with_code(monkeypatch: pytest.MonkeyPatch, capsys):
+    from kilter_mcp.server import main
+
+    monkeypatch.delenv("KILTER_USERNAME", raising=False)
+    monkeypatch.delenv("KILTER_PASSWORD", raising=False)
+    with pytest.raises(SystemExit) as info:
+        main(["--check"])
+    assert info.value.code == 1
+    assert "config:    FAILED" in capsys.readouterr().out

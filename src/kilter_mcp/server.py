@@ -322,8 +322,51 @@ HELP = (
     f"kilter-mcp {__version__} - unofficial MCP server for your Kilter Board logbook.\n\n"
     "This program speaks MCP over stdio and is meant to be launched by an MCP client such as\n"
     "Kiro, not run by hand. Configure it in your Kiro mcp.json with KILTER_USERNAME and\n"
-    "KILTER_PASSWORD in the env section. See https://github.com/wmmg101/kilter-mcp\n"
+    "KILTER_PASSWORD in the env section. See https://github.com/wmmg101/kilter-mcp\n\n"
+    "Options:\n"
+    "  --check     Log in with the configured credentials, fetch the logbook and print a\n"
+    "              short diagnostic (no entries, no secrets). Exit code 0 on success.\n"
+    "  --version   Print the version.\n"
 )
+
+
+async def run_check(service: KilterService | None = None) -> tuple[int, str]:
+    """Diagnostic used by ``kilter-mcp --check``. Returns (exit_code, report).
+
+    Prints only counts and configuration facts, never entries or credentials, so the output is
+    safe to paste into a bug report.
+    """
+    svc = service or KilterService()
+    lines = [f"kilter-mcp {__version__}"]
+    try:
+        username = Settings.from_env().username
+    except ConfigError as exc:
+        return 1, "\n".join([*lines, f"config:    FAILED - {exc}"])
+    lines.append(f"config:    ok (username {_mask(username)})")
+    try:
+        lines.append(f"timezone:  {svc.tz_name}")
+        logs, grades = await svc.load()
+    except ToolError as exc:
+        return 1, "\n".join([*lines, f"kilter:    FAILED - {exc}"])
+    finally:
+        await svc.aclose()
+    days = {d for d in (e.local_date(svc.tz) for e in logs) if d}
+    newest = max(days) if days else "n/a"
+    lines.append(f"grades:    {len(grades.grades)} grades from {grades.source}")
+    lines.append(
+        f"logbook:   {len(logs)} entries, {sum(1 for e in logs if e.topped)} sends, "
+        f"{len(days)} sessions, most recent {newest}"
+    )
+    lines.append("result:    ok")
+    return 0, "\n".join(lines)
+
+
+def _mask(username: str) -> str:
+    """Show enough of the username to spot a typo without printing it whole."""
+    if "@" in username:
+        local, _, domain = username.partition("@")
+        return f"{local[:2]}***@{domain}"
+    return f"{username[:2]}***"
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -335,6 +378,10 @@ def main(argv: list[str] | None = None) -> None:
     if any(a in ("-V", "--version") for a in args):
         sys.stdout.write(f"kilter-mcp {__version__}\n")
         return
+    if "--check" in args:
+        code, report = asyncio.run(run_check())
+        sys.stdout.write(report + "\n")
+        sys.exit(code)
     server = create_server()
     try:
         server.run("stdio")

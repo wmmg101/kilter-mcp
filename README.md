@@ -51,6 +51,10 @@ hand:
      config (`~/.kiro/settings/mcp.json`), never in a workspace config you might commit.
 4. Save. Kiro starts the server and the `kilter_*` tools appear. Ask away.
 
+Something not working? With the same variables exported in a terminal, run
+`uvx kilter-mcp --check`. It logs in, counts your logbook and prints a short report with no
+secrets or entries in it, which you can paste into an issue.
+
 Requirements: [`uv`](https://docs.astral.sh/uv/) installed (`uvx` comes with it). Python is
 handled by `uv`.
 

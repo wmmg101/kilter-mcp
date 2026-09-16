@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security problem (private)
+    url: https://github.com/wmmg101/kilter-mcp/security/advisories/new
+    about: Credential or token leaks, or anything else you would not want in a public issue.
+  - name: Setup help for other MCP clients
+    url: https://github.com/wmmg101/kilter-mcp/blob/main/docs/clients.md
+    about: Copy-paste configs for Claude, Codex, Cursor, VS Code, Windsurf, Gemini CLI, Zed.
