@@ -18,6 +18,46 @@ linked so you can double-check.
 
 For Kiro, see the [README](../README.md#add-to-kiro).
 
+## Setting the environment variables
+
+The placeholder syntax inside a client's config (`${VAR}`, `${env:VAR}`, ...) is the same on
+every OS, but making the variable visible to the client differs:
+
+**macOS / Linux (zsh, bash)** – add to `~/.zshrc` or `~/.bashrc`, then open a new terminal:
+
+```bash
+export KILTER_USERNAME="your-kilter-username"
+export KILTER_PASSWORD="your-kilter-password"
+```
+
+Terminal clients (Claude Code, Codex CLI, Gemini CLI, Kiro CLI) see these directly. GUI apps
+started from the Dock, Finder or a desktop launcher do **not** read shell rc files. Either
+launch the app from a terminal (`open -a Cursor`, `code .`, `zed .`), or set them for the
+whole login session:
+
+```bash
+# macOS, per login session (repeat after reboot, or put in a LaunchAgent)
+launchctl setenv KILTER_USERNAME "your-kilter-username"
+launchctl setenv KILTER_PASSWORD "your-kilter-password"
+```
+
+On Linux desktops, `~/.profile` or `~/.pam_environment` (distribution dependent) is read at
+login and applies to GUI apps.
+
+**Windows (PowerShell)** – persistent for your user account; restart the client afterwards:
+
+```powershell
+[Environment]::SetEnvironmentVariable("KILTER_USERNAME", "your-kilter-username", "User")
+[Environment]::SetEnvironmentVariable("KILTER_PASSWORD", "your-kilter-password", "User")
+```
+
+(`$env:KILTER_PASSWORD = "..."` only lasts for the current PowerShell window; `setx` is the
+cmd.exe equivalent of the persistent form.) You can also use Settings → System → About →
+Advanced system settings → Environment Variables.
+
+If this is more hassle than you want, every client below also accepts literal values in its
+config file. Just keep that file out of version control.
+
 ---
 
 ## Claude Desktop

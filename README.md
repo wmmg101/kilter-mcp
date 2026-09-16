@@ -42,8 +42,9 @@ hand:
 ```
 
 3. Provide your Kilter credentials. Either:
-   - export `KILTER_USERNAME` and `KILTER_PASSWORD` in your shell environment (Kiro expands
-     `${VAR}` after you approve the variables in **Settings → Mcp Approved Env Vars**), or
+   - set `KILTER_USERNAME` and `KILTER_PASSWORD` as environment variables (Kiro expands
+     `${VAR}` after you approve the variables in **Settings → Mcp Approved Env Vars**; see
+     [how to set them on macOS, Linux and Windows](docs/clients.md#setting-the-environment-variables)), or
    - replace the `${...}` placeholders with the literal values. Only do this in the *user*
      config (`~/.kiro/settings/mcp.json`), never in a workspace config you might commit.
 4. Save. Kiro starts the server and the `kilter_*` tools appear. Ask away.
