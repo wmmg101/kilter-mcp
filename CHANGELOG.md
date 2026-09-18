@@ -2,6 +2,24 @@
 
 All notable changes to kilter-mcp. Versions follow [Semantic Versioning](https://semver.org).
 
+## 0.2.2 - 2026-09-16
+
+### Changed
+- Every tool response now starts with `timezone` and `total_entries` (the size of the whole
+  logbook), so the agent can judge scope before asking for more. Default `limit` for logs,
+  sends and projects is 25 (was 50); the maximum is unchanged.
+- Grade fields gained `label` (e.g. `"4C/V0"`) alongside `grade` and `font_grade`. Summary
+  and grade pyramid include a `grade_note` when the V-scale hides real differences (Kilter's
+  ids 10-12 are all "V0" but 4A, 4B, 4C), and the server instructions tell the agent to
+  report Font grades in that case.
+
+### Added
+- Logbook completeness check. If Kilter's response carries a paging marker, reports a total
+  larger than the rows returned, or returns exactly a common page size (50, 100, 200, 250,
+  500, 1000, 2000, 5000), every response includes a `data_warning` and `kilter-mcp --check`
+  prints it. Nobody has confirmed whether `/api/logs` paginates for large logbooks; this
+  makes sure statistics are never silently computed on a partial one.
+
 ## 0.2.1 - 2026-09-16
 
 ### Security

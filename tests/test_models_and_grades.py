@@ -70,8 +70,18 @@ def test_grade_table_lookups(grades: GradeTable):
     assert grades.v_grade(10) == "V0"
     assert grades.font_grade(12) == "4C"
     assert grades.label(22) == "7A/V6"
-    assert grades.describe(18) == {"difficulty_id": 18, "grade": "V4", "font_grade": "6B"}
-    assert grades.describe(None) == {"difficulty_id": None, "grade": None, "font_grade": None}
+    assert grades.describe(18) == {
+        "difficulty_id": 18,
+        "grade": "V4",
+        "font_grade": "6B",
+        "label": "6B/V4",
+    }
+    assert grades.describe(None) == {
+        "difficulty_id": None,
+        "grade": None,
+        "font_grade": None,
+        "label": None,
+    }
     assert grades.describe(999)["grade"] is None
 
 
@@ -107,3 +117,25 @@ def test_local_date_respects_timezone():
     e = LogEntry.from_api({"topped": True, "createdAt": "2026-06-12T00:15:00Z"})
     assert e.date == "2026-06-12"
     assert e.local_date(ZoneInfo("America/Denver")) == "2026-06-11"
+
+
+def test_grade_note_when_v_scale_collapses(grades: GradeTable):
+    # 10, 11, 12 are 4A, 4B, 4C: three Font grades, one V-grade.
+    note = grades.grade_note([10, 11, 12, 11])
+    assert note is not None
+    assert "V0" in note
+    assert "4A-4C" in note
+    assert "font_grade" in note
+
+
+def test_grade_note_absent_when_scales_agree(grades: GradeTable):
+    # 13 (V1), 15 (V2), 16 (V3): one Font grade per V-grade, nothing to add.
+    assert grades.grade_note([13, 15, 16]) is None
+    assert grades.grade_note([]) is None
+    assert grades.grade_note([None, 999]) is None
+
+
+def test_grade_note_spans_multiple_v_grades(grades: GradeTable):
+    # 16/17 are 6A/6A+ (both V3), 18/19 are 6B/6B+ (both V4).
+    note = grades.grade_note([16, 17, 18, 19])
+    assert note is not None and "V3/V4" in note and "6A-6B+" in note

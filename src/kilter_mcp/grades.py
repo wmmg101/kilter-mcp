@@ -12,6 +12,7 @@ the live endpoint (``tests/test_grades.py`` checks the fallback matches the fixt
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from kilter_mcp.models import Grade
@@ -99,10 +100,42 @@ class GradeTable:
         return grade.boulder_label if grade else None
 
     def describe(self, difficulty_id: int | None) -> dict[str, object]:
-        """Fields merged into tool output for a difficulty id."""
+        """Fields merged into tool output for a difficulty id.
+
+        ``grade`` is the V-scale, ``font_grade`` the Font scale and ``label`` both together
+        (e.g. ``"4C/V0"``). The V-scale lumps Kilter's ids 1-12 into V0 and pairs several
+        higher ids too, so Font is the finer-grained one; both are always present.
+        """
         grade = self.get(difficulty_id)
         return {
             "difficulty_id": difficulty_id,
             "grade": grade.v_scale if grade else None,
             "font_grade": grade.font_scale if grade else None,
+            "label": grade.boulder_label if grade else None,
         }
+
+    def grade_note(self, difficulty_ids: Iterable[int | None]) -> str | None:
+        """Explain when the V-scale hides real differences in a set of sends.
+
+        Returns a sentence when the ids span more Font grades than V-grades (e.g. everything
+        is "V0" but ranges 4A-4C), otherwise None. Meant to be included verbatim in tool
+        output so the agent reports the finer scale.
+        """
+        found = [g for g in (self.get(i) for i in difficulty_ids) if g]
+        if not found:
+            return None
+        v_grades = {g.v_scale for g in found}
+        font_grades = sorted({g.font_scale for g in found}, key=lambda f: self._font_order(f))
+        if len(font_grades) <= len(v_grades):
+            return None
+        v_span = "/".join(sorted(v_grades, key=lambda v: int(v[1:]) if v[1:].isdigit() else 0))
+        return (
+            f"V-scale collapses these sends into {v_span}; use font_grade "
+            f"({font_grades[0]}-{font_grades[-1]}) to distinguish levels."
+        )
+
+    def _font_order(self, font: str) -> int:
+        for gid, grade in self.grades.items():
+            if grade.font_scale == font:
+                return gid
+        return 0

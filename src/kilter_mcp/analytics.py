@@ -183,6 +183,7 @@ def summary(logs: list[LogEntry], grades: GradeTable, *, tz: tzinfo = UTC) -> di
         "hardest_send": grades.describe(hardest),
         "hardest_flash": grades.describe(hardest_flash),
         "sends_by_grade": _counts_by_grade(sent, grades),
+        "grade_note": grades.grade_note(e.difficulty_id for e in sent),
         "grade_source": grades.source,
     }
 
@@ -226,7 +227,12 @@ def grade_pyramid(
         for k, v in by_id.items()
     ]
     levels.sort(key=lambda r: (r["difficulty_id"] is None, -(r["difficulty_id"] or 0)))
-    return {"angle": angle, "total_sends": len(sent), "levels": levels}
+    return {
+        "angle": angle,
+        "total_sends": len(sent),
+        "levels": levels,
+        "grade_note": grades.grade_note(e.difficulty_id for e in sent),
+    }
 
 
 # -- hardest sends ------------------------------------------------------------------------------

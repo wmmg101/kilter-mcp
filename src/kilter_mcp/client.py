@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -17,6 +18,14 @@ from kilter_mcp.grades import GradeTable
 from kilter_mcp.models import Grade, LogEntry
 
 USER_AGENT = "kilter-mcp (+https://github.com/wmmg101/kilter-mcp)"
+
+
+@dataclass(frozen=True)
+class Logbook:
+    """Result of fetching /api/logs: parsed entries plus an optional completeness warning."""
+
+    entries: list[LogEntry]
+    warning: str | None = None
 
 
 class KilterAPIError(RuntimeError):
@@ -61,13 +70,22 @@ class KilterClient:
 
     # -- public API -------------------------------------------------------------------------
 
-    async def get_logs(self) -> list[LogEntry]:
-        """Fetch every logbook row for the authenticated user, newest first."""
+    async def get_logbook(self) -> Logbook:
+        """Fetch the authenticated user's logbook, newest first, with a completeness check.
+
+        Nobody has confirmed whether ``/api/logs`` paginates for large logbooks. If the payload
+        carries paging markers, or the row count sits exactly on a common page size, the result
+        includes a ``warning`` so statistics are never silently computed on a partial logbook.
+        """
         payload = await self._get_authenticated(LOGS_URL)
         rows = _extract_rows(payload)
         entries = [LogEntry.from_api(row) for row in rows if isinstance(row, dict)]
         entries.sort(key=lambda e: e.created_at.timestamp() if e.created_at else 0.0, reverse=True)
-        return entries
+        return Logbook(entries=entries, warning=_completeness_warning(payload, len(rows)))
+
+    async def get_logs(self) -> list[LogEntry]:
+        """Fetch every logbook row for the authenticated user, newest first."""
+        return (await self.get_logbook()).entries
 
     async def get_grades(self) -> GradeTable:
         """Fetch the difficulty table (public endpoint). Cached for the process lifetime."""
@@ -148,6 +166,42 @@ def _retry_after_seconds(response: httpx2.Response) -> float | None:
     if when.tzinfo is None:
         when = when.replace(tzinfo=timezone.utc)
     return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
+
+# Row counts that look like a server-side page size rather than a real logbook size.
+SUSPICIOUS_PAGE_SIZES = frozenset({50, 100, 200, 250, 500, 1000, 2000, 5000})
+_PAGING_KEYS = ("next", "nextPage", "next_page", "nextCursor", "cursor", "hasMore", "has_more")
+_TOTAL_KEYS = ("total", "totalCount", "total_count", "count")
+REPORT_HINT = (
+    "Please report this at https://github.com/wmmg101/kilter-mcp/issues with the output of "
+    "`kilter-mcp --check`."
+)
+
+
+def _completeness_warning(payload: Any, row_count: int) -> str | None:
+    """Return a human-readable warning if the logbook payload may be partial, else None."""
+    if isinstance(payload, dict):
+        for key in _PAGING_KEYS:
+            value = payload.get(key)
+            if value not in (None, False, "", 0):
+                return (
+                    f"Kilter's response contains a paging marker ({key!r}); only the first "
+                    f"{row_count} logbook entries were loaded, so totals may be incomplete. "
+                    + REPORT_HINT
+                )
+        for key in _TOTAL_KEYS:
+            total = payload.get(key)
+            if isinstance(total, int) and total > row_count:
+                return (
+                    f"Kilter reports {total} logbook entries but returned {row_count}; totals "
+                    "may be incomplete. " + REPORT_HINT
+                )
+    if row_count in SUSPICIOUS_PAGE_SIZES:
+        return (
+            f"Kilter returned exactly {row_count} logbook entries, which may be a page limit "
+            "rather than your whole logbook. Statistics could be incomplete. " + REPORT_HINT
+        )
+    return None
 
 
 def _extract_rows(payload: Any) -> list[Any]:
