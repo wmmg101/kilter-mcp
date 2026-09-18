@@ -67,6 +67,7 @@ def test_entry_to_dict_shape(logs, grades):
         "difficulty_id": 10,
         "grade": "V0",
         "font_grade": "4A",
+        "label": "4A/V0",
         "my_difficulty_id": None,
         "my_grade": None,
         "my_rating": None,
@@ -232,6 +233,7 @@ def test_grade_pyramid(logs, grades):
         "difficulty_id": 13,
         "grade": "V1",
         "font_grade": "5A",
+        "label": "5A/V1",
         "sends": 2,
         "unique_climbs": 1,
         "flashes": 2,
@@ -293,3 +295,28 @@ def test_angle_stats(logs, grades):
     a40 = rows[2]
     assert a40["sends"] == 1 and a40["flashes"] == 0 and a40["flash_rate"] == 0.0
     assert a40["hardest_send"]["grade"] == "V4"
+
+
+def test_summary_and_pyramid_carry_grade_note_for_v0_logbook(grades):
+    from kilter_mcp.models import LogEntry
+
+    logs = [
+        LogEntry.from_api(
+            {
+                "climbUuid": f"c{i}",
+                "angle": 20,
+                "topped": True,
+                "createdAt": "2026-09-15T17:00:00Z",
+                "currentDifficultyId": gid,
+            }
+        )
+        for i, gid in enumerate([10, 11, 11, 12])
+    ]
+    assert "4A-4C" in summary(logs, grades)["grade_note"]
+    assert "4A-4C" in grade_pyramid(logs, grades)["grade_note"]
+
+
+def test_no_grade_note_when_font_and_v_scales_align(logs, grades):
+    # Fixture sends are ids 10, 13, 15, 18 (+ one unknown): one Font grade per V-grade.
+    assert summary(logs, grades)["grade_note"] is None
+    assert grade_pyramid(logs, grades)["grade_note"] is None

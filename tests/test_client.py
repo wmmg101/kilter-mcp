@@ -140,3 +140,63 @@ async def test_429_retries_are_bounded(fake: FakeKilter, settings: Settings):
     with pytest.raises(KilterAPIError, match="rate-limiting"):
         await client.get_logs()
     assert sleep.calls == [1.0, 1.0]
+
+
+# -- logbook completeness warning ---------------------------------------------------------------
+
+
+def _synthetic_rows(n: int) -> list[dict]:
+    return [
+        {
+            "logUuid": f"test-log-{i}",
+            "climbUuid": f"test-climb-{i % 7}",
+            "angle": 30,
+            "topped": i % 3 != 0,
+            "attempts": 1,
+            "createdAt": f"2026-01-{(i % 28) + 1:02d}T18:00:00Z",
+            "currentDifficultyId": 13,
+        }
+        for i in range(n)
+    ]
+
+
+async def test_no_warning_for_ordinary_logbook(fake: FakeKilter, settings: Settings):
+    client = KilterClient(settings, fake.http())
+    assert (await client.get_logbook()).warning is None
+
+
+@pytest.mark.parametrize("n", [50, 100, 500, 1000])
+async def test_round_row_count_warns(fake: FakeKilter, settings: Settings, n: int):
+    fake.raw_logs = _synthetic_rows(n)
+    client = KilterClient(settings, fake.http())
+    logbook = await client.get_logbook()
+    assert len(logbook.entries) == n
+    assert logbook.warning is not None
+    assert f"exactly {n}" in logbook.warning
+    assert "github.com/wmmg101/kilter-mcp/issues" in logbook.warning
+
+
+async def test_non_round_row_count_does_not_warn(fake: FakeKilter, settings: Settings):
+    fake.raw_logs = _synthetic_rows(101)
+    client = KilterClient(settings, fake.http())
+    assert (await client.get_logbook()).warning is None
+
+
+async def test_paging_marker_warns(fake: FakeKilter, settings: Settings):
+    fake.raw_logs = {"logs": _synthetic_rows(9), "nextCursor": "abc"}  # type: ignore[assignment]
+    client = KilterClient(settings, fake.http())
+    warning = (await client.get_logbook()).warning
+    assert warning is not None and "paging marker" in warning and "nextCursor" in warning
+
+
+async def test_total_larger_than_rows_warns(fake: FakeKilter, settings: Settings):
+    fake.raw_logs = {"data": _synthetic_rows(9), "total": 240}  # type: ignore[assignment]
+    client = KilterClient(settings, fake.http())
+    warning = (await client.get_logbook()).warning
+    assert warning is not None and "reports 240" in warning and "returned 9" in warning
+
+
+async def test_total_equal_to_rows_is_fine(fake: FakeKilter, settings: Settings):
+    fake.raw_logs = {"data": _synthetic_rows(9), "total": 9, "next": None}  # type: ignore[assignment]
+    client = KilterClient(settings, fake.http())
+    assert (await client.get_logbook()).warning is None

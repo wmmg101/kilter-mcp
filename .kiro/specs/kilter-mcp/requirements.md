@@ -61,6 +61,11 @@ login command, or database.
 - R18. `kilter_get_angle_stats()` — per-angle comparison.
 - R19. All tools are read-only and declare `readOnlyHint=True`.
 - R20. Tool output is structured (JSON-serialisable dicts), not prose.
+- R21. Every response carries `timezone` and `total_entries`; `data_warning` is present only
+  when the logbook may be incomplete (paging marker, total > rows, or a row count equal to a
+  common page size). `--check` prints the same warning.
+- R22. Grade fields are always `difficulty_id`, `grade` (V), `font_grade` and `label`.
+  Summary and pyramid add `grade_note` when Font grades outnumber V-grades in the sends.
 
 ### Log semantics (drives analytics correctness)
 - One `/api/logs` row is a self-contained entry for one climb at one angle on one date.

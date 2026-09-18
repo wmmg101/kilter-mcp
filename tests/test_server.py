@@ -67,6 +67,7 @@ async def test_get_logs_filters_and_shape(server):
         "difficulty_id",
         "grade",
         "font_grade",
+        "label",
         "my_difficulty_id",
         "my_grade",
         "my_rating",
@@ -320,3 +321,58 @@ async def test_every_tool_parameter_is_described(server):
         if not prop.get("description")
     ]
     assert missing == []
+
+
+# -- response envelope --------------------------------------------------------------------------
+
+
+async def test_every_tool_response_has_envelope_fields(server):
+    async with Client(server) as client:
+        listed = await client.list_tools()
+        for tool in listed.tools:
+            res = _payload(await client.call_tool(tool.name, {}))
+            assert res["timezone"] == "UTC", tool.name
+            assert res["total_entries"] == 9, tool.name
+            assert "data_warning" not in res, tool.name
+
+
+async def test_data_warning_propagates_to_every_tool_and_check(
+    fake: FakeKilter, settings: Settings, monkeypatch: pytest.MonkeyPatch
+):
+    from kilter_mcp.server import run_check
+    from tests.conftest import TEST_USERNAME
+    from tests.test_client import _synthetic_rows
+
+    fake.raw_logs = _synthetic_rows(100)
+    service = KilterService(lambda: KilterClient(settings, fake.http()))
+    server = create_server(service)
+    async with Client(server) as client:
+        summary = _payload(await client.call_tool("kilter_get_summary", {}))
+        sessions = _payload(await client.call_tool("kilter_get_sessions", {}))
+    assert "exactly 100" in summary["data_warning"]
+    assert "exactly 100" in sessions["data_warning"]
+    assert summary["total_entries"] == 100
+
+    monkeypatch.setenv("KILTER_USERNAME", TEST_USERNAME)
+    monkeypatch.setenv("KILTER_PASSWORD", TEST_PASSWORD)
+    fake2 = FakeKilter(raw_logs=_synthetic_rows(100), raw_grades=fake.raw_grades)
+    code, report = await run_check(KilterService(lambda: KilterClient(settings, fake2.http())))
+    assert code == 0
+    assert "warning:   Kilter returned exactly 100" in report
+
+
+async def test_default_limits_are_lower(server):
+    async with Client(server) as client:
+        listed = await client.list_tools()
+    defaults = {
+        t.name: t.input_schema["properties"]["limit"]["default"]
+        for t in listed.tools
+        if "limit" in (t.input_schema.get("properties") or {})
+    }
+    assert defaults == {
+        "kilter_get_logs": 25,
+        "kilter_get_sends": 25,
+        "kilter_get_projects": 25,
+        "kilter_get_hardest_sends": 10,
+        "kilter_get_sessions": 5,
+    }

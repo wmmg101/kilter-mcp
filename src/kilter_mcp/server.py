@@ -33,7 +33,7 @@ from kilter_mcp.analytics import (
     summary,
 )
 from kilter_mcp.auth import AuthError
-from kilter_mcp.client import KilterAPIError, KilterClient
+from kilter_mcp.client import KilterAPIError, KilterClient, Logbook
 from kilter_mcp.config import ConfigError, Settings, resolve_timezone, timezone_name
 from kilter_mcp.grades import GradeTable
 from kilter_mcp.models import LogEntry
@@ -81,11 +81,14 @@ INSTRUCTIONS = (
     "Tools for the authenticated user's own Kilter Board logbook (read-only). "
     "Use them whenever the user asks about their Kilter climbing: sessions, sends, flashes, "
     "projects, attempts, wall angles, grades, pyramids, hardest climbs or progress over time. "
-    "'grade' / 'font_grade' are Kilter's consensus grade for the climb (V-scale / Font scale); "
-    "'my_grade' and 'my_rating' (1-5 stars) are the user's own opinion when they logged one, "
-    "otherwise null. 'status' is 'flash' (topped first try), 'send' (topped) or 'attempt' "
-    "(not topped). Angles are wall angles in degrees (e.g. 20, 30, 40). Dates and sessions "
-    "use the user's timezone, reported in the 'timezone' field."
+    "'grade' / 'font_grade' / 'label' are Kilter's consensus grade for the climb (V-scale, "
+    "Font scale, and both as e.g. '6A/V3'). Kilter's scale is finer than the V-scale: several "
+    "Font grades share one V-grade (4A, 4B and 4C are all V0), so when a user's sends all show "
+    "the same V-grade, report Font grades instead; outputs include a 'grade_note' when this "
+    "applies. 'my_grade' and 'my_rating' (1-5 stars) are the user's own opinion when they "
+    "logged one, otherwise null. 'status' is 'flash' (topped first try), 'send' (topped) or "
+    "'attempt' (not topped). Angles are wall angles in degrees (e.g. 20, 30, 40). Dates and "
+    "sessions use the user's timezone, reported in the 'timezone' field."
 )
 
 
@@ -110,7 +113,7 @@ class KilterService:
         self._cache_ttl = cache_ttl
         self._clock = clock
         self._tz = tz
-        self._cached_logs: list[LogEntry] | None = None
+        self._cached: Logbook | None = None
         self._cached_at: float = 0.0
         self._lock = asyncio.Lock()
 
@@ -145,21 +148,38 @@ class KilterService:
         client = self._get_client()
         try:
             grades = await client.get_grades()
-            logs = await self._logs(client)
+            logbook = await self._logbook(client)
         except (AuthError, KilterAPIError) as exc:
             raise ToolError(str(exc)) from None
-        return logs, grades
+        return logbook.entries, grades
 
-    async def _logs(self, client: KilterClient) -> list[LogEntry]:
+    async def _logbook(self, client: KilterClient) -> Logbook:
         # The lock makes concurrent tool calls share one fetch instead of racing.
         async with self._lock:
             now = self._clock()
-            if self._cached_logs is not None and now - self._cached_at < self._cache_ttl:
-                return self._cached_logs
-            logs = await client.get_logs()
-            self._cached_logs = logs
+            if self._cached is not None and now - self._cached_at < self._cache_ttl:
+                return self._cached
+            logbook = await client.get_logbook()
+            self._cached = logbook
             self._cached_at = now
-            return logs
+            return logbook
+
+    def envelope(self, logs: list[LogEntry], body: dict[str, Any]) -> dict[str, Any]:
+        """Common fields on every tool response.
+
+        ``timezone`` and ``total_entries`` let the agent judge scope without another call;
+        ``data_warning`` appears only when the logbook may be incomplete (see
+        ``KilterClient.get_logbook``).
+        """
+        out: dict[str, Any] = {"timezone": self.tz_name, "total_entries": len(logs)}
+        if self.data_warning:
+            out["data_warning"] = self.data_warning
+        out.update(body)
+        return out
+
+    @property
+    def data_warning(self) -> str | None:
+        return self._cached.warning if self._cached is not None else None
 
     async def aclose(self) -> None:
         if self._client is not None:
@@ -197,7 +217,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
     @_read_only_tool(server, "kilter_get_logs")
     async def kilter_get_logs(
-        limit: Limit = 50,
+        limit: Limit = 25,
         angle: Angle = None,
         topped: Topped = None,
         start_date: StartDate = None,
@@ -207,25 +227,27 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
         Use when the user asks about recent Kilter climbs, attempts, what they climbed on a
         date, or wants raw history. Each entry is one climb at one wall angle on one date
-        with the number of tries in that entry. Filters: limit (default 50, max 500),
+        with the number of tries in that entry. Filters: limit (default 25, max 500),
         angle (degrees), topped (true=only sends, false=only unsuccessful attempts),
         start_date/end_date (YYYY-MM-DD, inclusive).
         """
-        n = _check_limit(limit, 50)
+        n = _check_limit(limit, 25)
         tz = svc.tz
         start, end = _date_range(start_date, end_date, tz)
         logs, grades = await svc.load()
         rows = filter_logs(logs, angle=angle, topped=topped, start=start, end=end)
-        return {
-            "timezone": svc.tz_name,
-            "total_matching": len(rows),
-            "returned": min(n, len(rows)),
-            "entries": [entry_to_dict(e, grades, tz) for e in rows[:n]],
-        }
+        return svc.envelope(
+            logs,
+            {
+                "total_matching": len(rows),
+                "returned": min(n, len(rows)),
+                "entries": [entry_to_dict(e, grades, tz) for e in rows[:n]],
+            },
+        )
 
     @_read_only_tool(server, "kilter_get_sends")
     async def kilter_get_sends(
-        limit: Limit = 50,
+        limit: Limit = 25,
         angle: Angle = None,
         start_date: StartDate = None,
         end_date: EndDate = None,
@@ -234,24 +256,26 @@ def create_server(service: KilterService | None = None) -> MCPServer:
 
         Use when the user asks about their sends, ticks, completed climbs or flashes.
         Entries with status 'flash' were topped on the first try. Filters: limit
-        (default 50, max 500), angle (degrees), start_date/end_date (YYYY-MM-DD).
+        (default 25, max 500), angle (degrees), start_date/end_date (YYYY-MM-DD).
         """
-        n = _check_limit(limit, 50)
+        n = _check_limit(limit, 25)
         tz = svc.tz
         start, end = _date_range(start_date, end_date, tz)
         logs, grades = await svc.load()
         rows = filter_logs(logs, angle=angle, topped=True, start=start, end=end)
-        return {
-            "timezone": svc.tz_name,
-            "total_matching": len(rows),
-            "returned": min(n, len(rows)),
-            "sends": [entry_to_dict(e, grades, tz) for e in rows[:n]],
-        }
+        return svc.envelope(
+            logs,
+            {
+                "total_matching": len(rows),
+                "returned": min(n, len(rows)),
+                "sends": [entry_to_dict(e, grades, tz) for e in rows[:n]],
+            },
+        )
 
     @_read_only_tool(server, "kilter_get_projects")
     async def kilter_get_projects(
         angle: Angle = None,
-        limit: Limit = 50,
+        limit: Limit = 25,
     ) -> dict[str, Any]:
         """Return the user's projects: climbs attempted but never topped at that wall angle.
 
@@ -259,10 +283,13 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         next. A climb is a project per (climb, angle); sending it at another angle does not
         remove it. Sorted by most recently tried, then most attempts. Optional angle filter.
         """
-        n = _check_limit(limit, 50)
+        n = _check_limit(limit, 25)
         logs, grades = await svc.load()
         rows = projects(logs, grades, angle=angle, tz=svc.tz)
-        return {"total_projects": len(rows), "returned": min(n, len(rows)), "projects": rows[:n]}
+        return svc.envelope(
+            logs,
+            {"total_projects": len(rows), "returned": min(n, len(rows)), "projects": rows[:n]},
+        )
 
     @_read_only_tool(server, "kilter_get_summary")
     async def kilter_get_summary() -> dict[str, Any]:
@@ -274,7 +301,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         per grade.
         """
         logs, grades = await svc.load()
-        return {"timezone": svc.tz_name, **summary(logs, grades, tz=svc.tz)}
+        return svc.envelope(logs, summary(logs, grades, tz=svc.tz))
 
     @_read_only_tool(server, "kilter_get_grade_pyramid")
     async def kilter_get_grade_pyramid(angle: Angle = None) -> dict[str, Any]:
@@ -284,7 +311,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         rate per grade, or how solid they are at a level. Optional wall-angle filter.
         """
         logs, grades = await svc.load()
-        return grade_pyramid(logs, grades, angle=angle)
+        return svc.envelope(logs, grade_pyramid(logs, grades, angle=angle))
 
     @_read_only_tool(server, "kilter_get_hardest_sends")
     async def kilter_get_hardest_sends(limit: Limit = 10, angle: Angle = None) -> dict[str, Any]:
@@ -295,7 +322,9 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         n = _check_limit(limit, 10, maximum=200)
         logs, grades = await svc.load()
-        return {"hardest_sends": hardest_sends(logs, grades, limit=n, angle=angle, tz=svc.tz)}
+        return svc.envelope(
+            logs, {"hardest_sends": hardest_sends(logs, grades, limit=n, angle=angle, tz=svc.tz)}
+        )
 
     @_read_only_tool(server, "kilter_get_sessions")
     async def kilter_get_sessions(limit: Limit = 5) -> dict[str, Any]:
@@ -307,7 +336,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         n = _check_limit(limit, 5, maximum=100)
         logs, grades = await svc.load()
-        return {"timezone": svc.tz_name, "sessions": sessions(logs, grades, limit=n, tz=svc.tz)}
+        return svc.envelope(logs, {"sessions": sessions(logs, grades, limit=n, tz=svc.tz)})
 
     @_read_only_tool(server, "kilter_get_progression")
     async def kilter_get_progression(
@@ -325,7 +354,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
             periods = progression(logs, grades, period=period, angle=angle, tz=svc.tz)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
-        return {"timezone": svc.tz_name, "period": period, "angle": angle, "periods": periods}
+        return svc.envelope(logs, {"period": period, "angle": angle, "periods": periods})
 
     @_read_only_tool(server, "kilter_get_angle_stats")
     async def kilter_get_angle_stats() -> dict[str, Any]:
@@ -336,7 +365,7 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         attempts, sessions, hardest send/flash and sends per grade.
         """
         logs, grades = await svc.load()
-        return {"angles": angle_stats(logs, grades, tz=svc.tz)}
+        return svc.envelope(logs, {"angles": angle_stats(logs, grades, tz=svc.tz)})
 
     return server
 
@@ -380,6 +409,9 @@ async def run_check(service: KilterService | None = None) -> tuple[int, str]:
         f"logbook:   {len(logs)} entries, {sum(1 for e in logs if e.topped)} sends, "
         f"{len(days)} sessions, most recent {newest}"
     )
+    warning = svc.data_warning
+    if warning:
+        lines.append(f"warning:   {warning}")
     lines.append("result:    ok")
     return 0, "\n".join(lines)
 
