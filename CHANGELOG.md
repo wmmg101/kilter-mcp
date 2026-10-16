@@ -2,6 +2,27 @@
 
 All notable changes to kilter-mcp. Versions follow [Semantic Versioning](https://semver.org).
 
+## Unreleased
+
+### Added
+- `kilter_plan_session(angle, target_grade, warmups, main, projects)`: builds a playlist for
+  an upcoming session from climbs already in your logbook at that angle. Three ordered
+  sections: warm-ups (sent climbs 2-7 Font steps below target, easiest first), main set
+  (climbs within a Font step of target: repeats to consolidate, then unsent ones) and
+  projects (unsent climbs 2-5 steps above target with the most attempts). Each climb carries
+  its history at that angle and a one-line reason. `target_grade` accepts `V4`, `6B+`, a
+  combined label or a difficulty id; omit it to use your hardest send at that angle.
+- When a section runs short of climbs logged at that angle it is topped up, first with
+  repeats (`status: "repeat"`: climbs you have sent at other angles, with `sent_at` listing
+  each prior angle, grade, flash and your star rating, graded at the new angle by the
+  community), then with climbs new to you from Kilter's curated list (`status: "new"`,
+  `source: "catalogue"`, with setter, community ascents and quality), filtered to ones that
+  fit your wall. The wall is inferred from the edge boxes of climbs you have already logged,
+  so the filter is conservative. The curated list (~5 MB) and per-climb grades (one small
+  request per sent climb, at most 40 per call) are downloaded the first time a session is
+  planned and kept for the process; pass `include_new: false` for a logbook-only plan. If the
+  catalogue is unavailable the plan still comes back from your logbook, with a note.
+
 ## 0.2.2 - 2026-09-16
 
 ### Changed

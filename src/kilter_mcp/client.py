@@ -13,9 +13,15 @@ import httpx2
 
 from kilter_mcp.auth import AuthError, TokenManager
 from kilter_mcp.config import Settings, redact
-from kilter_mcp.endpoints import GRADES_URL, LOGS_URL
+from kilter_mcp.endpoints import (
+    CURATED_CLIMBS_URL,
+    GRADES_URL,
+    LOGGED_CLIMBS_URL,
+    LOGS_URL,
+    climb_stats_url,
+)
 from kilter_mcp.grades import GradeTable
-from kilter_mcp.models import Grade, LogEntry
+from kilter_mcp.models import Catalogue, ClimbStat, Grade, LogEntry
 
 USER_AGENT = "kilter-mcp (+https://github.com/wmmg101/kilter-mcp)"
 
@@ -86,6 +92,19 @@ class KilterClient:
     async def get_logs(self) -> list[LogEntry]:
         """Fetch every logbook row for the authenticated user, newest first."""
         return (await self.get_logbook()).entries
+
+    async def get_logged_climbs(self) -> Catalogue:
+        """The user's own logged climbs with edge boxes and per-angle stats (~1 KB per climb)."""
+        return Catalogue.from_api(await self._get_authenticated(LOGGED_CLIMBS_URL))
+
+    async def get_curated_climbs(self) -> Catalogue:
+        """Kilter's curated climbs across all boards, with per-angle stats (~5 MB, ~6k climbs)."""
+        return Catalogue.from_api(await self._get_authenticated(CURATED_CLIMBS_URL))
+
+    async def get_climb_stats(self, climb_uuid: str) -> list[ClimbStat]:
+        """Community stats for one climb at every angle it has been climbed at."""
+        rows = _extract_rows(await self._get_authenticated(climb_stats_url(climb_uuid)))
+        return [s for s in (ClimbStat.from_api(r) for r in rows if isinstance(r, dict)) if s]
 
     async def get_grades(self) -> GradeTable:
         """Fetch the difficulty table (public endpoint). Cached for the process lifetime."""

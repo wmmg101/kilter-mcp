@@ -139,3 +139,30 @@ def test_grade_note_spans_multiple_v_grades(grades: GradeTable):
     # 16/17 are 6A/6A+ (both V3), 18/19 are 6B/6B+ (both V4).
     note = grades.grade_note([16, 17, 18, 19])
     assert note is not None and "V3/V4" in note and "6A-6B+" in note
+
+
+def test_grade_table_resolve_labels(grades: GradeTable):
+    ids = lambda text: [g.id for g in grades.resolve(text)]  # noqa: E731
+    assert ids("V4") == [18, 19]  # 6B and 6B+
+    assert ids("v4") == [18, 19]
+    assert ids("6B") == [18]
+    assert ids("6b+") == [19]
+    assert ids("6B/V4") == [18]
+    assert ids("18") == [18]
+    assert ids(" V1 ") == [13, 14]
+
+
+def test_grade_table_resolve_prefers_listed_ids(grades: GradeTable):
+    # V0 covers ids 1-12 on paper, but only 4A-4C are pickable in the app.
+    assert [g.id for g in grades.resolve("V0")] == [10, 11, 12]
+    # Unlisted grades still resolve when asked for explicitly.
+    assert [g.id for g in grades.resolve("V17")] == [34]
+    assert [g.id for g in grades.resolve("3C")] == [9]
+
+
+def test_grade_table_resolve_unknown(grades: GradeTable):
+    assert grades.resolve("") == []
+    assert grades.resolve("   ") == []
+    assert grades.resolve("V99") == []
+    assert grades.resolve("hard") == []
+    assert grades.resolve("40") == []

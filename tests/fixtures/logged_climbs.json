@@ -1,0 +1,102 @@
+{
+  "climbs": [
+    {
+      "climbUuid": "test-climb-1",
+      "climbConcat": "h1p12h2p13h3p14",
+      "name": "Test Climb",
+      "description": "",
+      "edgeLeft": 20,
+      "edgeRight": 100,
+      "edgeBottom": 8,
+      "edgeTop": 140,
+      "frameCount": 1,
+      "framesPace": 0,
+      "userUuid": "test-setter",
+      "username": "test-setter",
+      "productName": "Test Board",
+      "productLayoutUuid": "10",
+      "allowMatch": true,
+      "isDraft": false,
+      "isListed": true,
+      "isDeleted": false,
+      "angle": 30,
+      "accumulatedHoldSetValue": 1,
+      "origin": "NATIVE",
+      "createdAt": "2025-01-01T00:00:00Z",
+      "updatedAt": "2025-01-01T00:00:00Z"
+    },
+    {
+      "climbUuid": "test-climb-2",
+      "climbConcat": "h1p12h2p13h3p14",
+      "name": "Flash Climb",
+      "description": "",
+      "edgeLeft": 8,
+      "edgeRight": 120,
+      "edgeBottom": 4,
+      "edgeTop": 152,
+      "frameCount": 1,
+      "framesPace": 0,
+      "userUuid": "test-setter",
+      "username": "test-setter",
+      "productName": "Test Board",
+      "productLayoutUuid": "27",
+      "allowMatch": true,
+      "isDraft": false,
+      "isListed": true,
+      "isDeleted": false,
+      "angle": 30,
+      "accumulatedHoldSetValue": 1,
+      "origin": "NATIVE",
+      "createdAt": "2025-01-01T00:00:00Z",
+      "updatedAt": "2025-01-01T00:00:00Z"
+    },
+    {
+      "climbUuid": "test-climb-3",
+      "name": "Project Climb",
+      "edgeLeft": 40,
+      "edgeRight": 140,
+      "edgeBottom": 20,
+      "edgeTop": 148,
+      "username": "test-setter",
+      "productName": "Test Board",
+      "productLayoutUuid": "10",
+      "isDraft": false,
+      "isListed": true
+    },
+    {
+      "climbUuid": "test-climb-4",
+      "name": "Steep Attempt",
+      "edgeLeft": 40,
+      "edgeRight": 100,
+      "edgeBottom": 20,
+      "edgeTop": 120,
+      "username": "test-setter",
+      "productName": "Test Board",
+      "productLayoutUuid": "10",
+      "isDraft": false,
+      "isListed": true
+    },
+    {
+      "climbUuid": "test-climb-5",
+      "name": "Sparse Row",
+      "productName": "Test Board",
+      "productLayoutUuid": "10"
+    },
+    {
+      "climbUuid": "test-climb-other-board",
+      "name": "Other Board Climb",
+      "edgeLeft": 0,
+      "edgeRight": 999,
+      "edgeBottom": 0,
+      "edgeTop": 999,
+      "username": "test-setter",
+      "productName": "Other Board",
+      "productLayoutUuid": "99",
+      "isDraft": false,
+      "isListed": true
+    }
+  ],
+  "climbStats": [
+    {"climbUuid": "test-climb-1", "angle": 30, "ascentCount": 40, "currentDifficultyId": 10, "difficultyAverage": 10.0, "qualityAverage": 2.4}
+  ]
+}

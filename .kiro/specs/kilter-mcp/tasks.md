@@ -23,9 +23,16 @@
 - [x] 19. Timezone-aware sessions (`KILTER_TIMEZONE` or host tz) — 0.2.0
 - [x] 20. Surface user's own grade/rating from embedded `climbRating` — 0.2.0
 - [x] 21. Published 0.2.0 to MCP Registry as io.github.wmmg101/kilter-mcp
-- [ ] 22. (later) climb catalogue tools
+- [ ] 22. (later) climb catalogue tools beyond session planning (name search, climb lookup)
 - [ ] 23. (later) `.mcpb` bundle for Claude Desktop
 - [x] 24. 0.2.1: login-failure cooldown, --check, Windows/macOS CI, Dependabot, issue
       templates, CoC, branch ruleset (ci check required, no force-push/delete on main)
 - [x] 25. 0.2.2: label + grade_note for collapsed V-grades, logbook completeness warning,
       total_entries/timezone envelope on every response, list defaults 25
+- [x] 26. `kilter_plan_session`: warm-up/main/projects playlist for an upcoming session at
+      an angle and target grade, from the user's own logged climbs; `GradeTable.resolve`
+- [x] 27. Session playlist tops up with climbs new to the user from `/api/climbs/curated`,
+      wall inferred from `/api/climbs/logged` edge boxes (`catalogue.py`); probed and
+      documented the portal catalogue endpoints (sizes, filters, 405s) in design.md
+- [x] 28. Repeats at a new angle: sends from other angles graded at the target angle via
+      `/api/climb-stat/{uuid}` (bounded, cached), preferred over new climbs in top-ups

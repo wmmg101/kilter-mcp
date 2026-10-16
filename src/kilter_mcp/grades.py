@@ -99,6 +99,28 @@ class GradeTable:
         grade = self.get(difficulty_id)
         return grade.boulder_label if grade else None
 
+    def resolve(self, text: str) -> list[Grade]:
+        """Grades matching a user-supplied label: ``"V4"``, ``"6B"``, ``"6b+"``, ``"6B/V4"``
+        or a bare difficulty id.
+
+        A V-grade covers several ids (V4 is both 6B and 6B+), so the result is a list, lowest
+        id first. Unlisted ids (below 4A, above 8C+) are returned only when nothing listed
+        matches, so ``"V0"`` means 4A-4C rather than 1A-4C. Empty when nothing matches.
+        """
+        wanted = text.strip().upper().replace(" ", "")
+        if not wanted:
+            return []
+        if wanted.isdigit():
+            grade = self.get(int(wanted))
+            return [grade] if grade else []
+        found = [
+            g
+            for _, g in sorted(self.grades.items())
+            if wanted in (g.v_scale.upper(), g.font_scale.upper(), g.boulder_label.upper())
+        ]
+        listed = [g for g in found if g.is_listed]
+        return listed or found
+
     def describe(self, difficulty_id: int | None) -> dict[str, object]:
         """Fields merged into tool output for a difficulty id.
 

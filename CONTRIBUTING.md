@@ -29,10 +29,14 @@ analytics.py   pure functions over list[LogEntry]  (no I/O)
 grades.py      difficulty id → grade lookup, with embedded fallback table
     │
     ▼
-models.py      LogEntry, Grade dataclasses; tolerant parsing of API rows
+catalogue.py   pure functions over the curated climb catalogue (wall fit, candidates)
     │
     ▼
-client.py      KilterClient: get_logs(), get_grades(); adds the bearer header
+models.py      LogEntry, Grade, CatalogClimb, ClimbStat dataclasses; tolerant parsing
+    │
+    ▼
+client.py      KilterClient: get_logs(), get_grades(), get_logged_climbs(),
+               get_curated_climbs(); adds the bearer header
 auth.py        TokenManager: password grant, in-memory tokens, refresh + rotation
 config.py      Settings from KILTER_USERNAME / KILTER_PASSWORD; redact() helper
 endpoints.py   every URL in one place
@@ -41,7 +45,8 @@ endpoints.py   every URL in one place
 Rules that keep this maintainable:
 
 - `server.py` never does OAuth or raw HTTP.
-- `analytics.py` and `grades.py` never do I/O, so they are tested with plain data.
+- `analytics.py`, `catalogue.py` and `grades.py` never do I/O, so they are tested with
+  plain data.
 - `client.py` and `auth.py` never import `mcp`.
 - Only `config.py`, `auth.py` and `client.py` ever see the password or tokens.
 - HTTP goes through `httpx2` (already a dependency of `mcp`); the `AsyncClient` is

@@ -105,6 +105,7 @@ How has my climbing progressed over the last six months?
 | `kilter_get_sessions` | Entries grouped by day |
 | `kilter_get_progression` | Month-by-month or week-by-week trend |
 | `kilter_get_angle_stats` | Per-angle comparison |
+| `kilter_plan_session` | Warm-up / main / projects playlist for an upcoming session at an angle and grade: climbs you logged at that angle first, then your sends from other angles to repeat, then well-rated curated climbs that fit your wall |
 
 All tools are read-only and only ever see the account whose credentials you configured.
 
