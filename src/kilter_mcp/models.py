@@ -107,6 +107,128 @@ class LogEntry:
 
 
 @dataclass(frozen=True)
+class Box:
+    """Edge box on the board, in Kilter's hole coordinates (x grows right, y grows up)."""
+
+    left: int
+    right: int
+    bottom: int
+    top: int
+
+    def contains(self, other: Box) -> bool:
+        return (
+            other.left >= self.left
+            and other.right <= self.right
+            and other.bottom >= self.bottom
+            and other.top <= self.top
+        )
+
+    def union(self, other: Box) -> Box:
+        return Box(
+            left=min(self.left, other.left),
+            right=max(self.right, other.right),
+            bottom=min(self.bottom, other.bottom),
+            top=max(self.top, other.top),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        return {"left": self.left, "right": self.right, "bottom": self.bottom, "top": self.top}
+
+
+@dataclass(frozen=True)
+class CatalogClimb:
+    """One climb from ``/api/climbs/logged`` or ``/api/climbs/curated``.
+
+    ``layout_uuid`` is the hold-set variant the climb was set on (a small numeric string such as
+    ``"10"``); climbs from several layouts are climbable on one wall, so it is used only to judge
+    compatibility against layouts the user has already climbed. ``box`` is the climb's edge box.
+    """
+
+    climb_uuid: str
+    name: str
+    product_name: str
+    layout_uuid: str
+    box: Box | None
+    setter: str
+    is_listed: bool
+    is_draft: bool
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> CatalogClimb | None:
+        uuid = str(raw.get("climbUuid") or "")
+        if not uuid:
+            return None
+        edges = [_as_int(raw.get(k)) for k in ("edgeLeft", "edgeRight", "edgeBottom", "edgeTop")]
+        box = None
+        if all(e is not None for e in edges):
+            box = Box(*edges)  # type: ignore[arg-type]
+        return cls(
+            climb_uuid=uuid,
+            name=str(raw.get("name") or "Unknown climb"),
+            product_name=str(raw.get("productName") or ""),
+            layout_uuid=str(raw.get("productLayoutUuid") or ""),
+            box=box,
+            setter=str(raw.get("username") or ""),
+            is_listed=bool(raw.get("isListed", True)),
+            is_draft=bool(raw.get("isDraft", False)),
+        )
+
+
+@dataclass(frozen=True)
+class ClimbStat:
+    """Community stats for one climb at one angle (from the ``climbStats`` array)."""
+
+    climb_uuid: str
+    angle: int
+    difficulty_id: int | None
+    ascent_count: int
+    quality_average: float | None
+
+    @classmethod
+    def from_api(cls, raw: dict[str, Any]) -> ClimbStat | None:
+        uuid = str(raw.get("climbUuid") or "")
+        angle = _as_int(raw.get("angle"))
+        if not uuid or angle is None:
+            return None
+        quality = raw.get("qualityAverage")
+        return cls(
+            climb_uuid=uuid,
+            angle=angle,
+            difficulty_id=_as_int(raw.get("currentDifficultyId")),
+            ascent_count=_as_int(raw.get("ascentCount"), 0) or 0,
+            quality_average=float(quality) if isinstance(quality, (int, float)) else None,
+        )
+
+
+@dataclass(frozen=True)
+class Catalogue:
+    """A climbs + stats payload, parsed."""
+
+    climbs: list[CatalogClimb]
+    stats: list[ClimbStat]
+
+    @classmethod
+    def from_api(cls, raw: Any) -> Catalogue:
+        if not isinstance(raw, dict):
+            return cls(climbs=[], stats=[])
+        climbs = [
+            c
+            for c in (
+                CatalogClimb.from_api(r) for r in raw.get("climbs") or [] if isinstance(r, dict)
+            )
+            if c
+        ]
+        stats = [
+            s
+            for s in (
+                ClimbStat.from_api(r) for r in raw.get("climbStats") or [] if isinstance(r, dict)
+            )
+            if s
+        ]
+        return cls(climbs=climbs, stats=stats)
+
+
+@dataclass(frozen=True)
 class Grade:
     """One row from GET /api/grades (Kilter's 39-step difficulty scale)."""
 

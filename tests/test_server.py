@@ -23,7 +23,14 @@ EXPECTED_TOOLS = {
     "kilter_get_sessions",
     "kilter_get_progression",
     "kilter_get_angle_stats",
+    "kilter_plan_session",
 }
+
+
+def _minimal_args(tool) -> dict[str, Any]:
+    """Smallest valid argument set for a tool: most take none, kilter_plan_session needs angle."""
+    required = tool.input_schema.get("required") or []
+    return {"angle": 30} if "angle" in required else {}
 
 
 @pytest.fixture
@@ -129,6 +136,187 @@ async def test_other_tools_return_structured_data(server):
     assert [a["angle"] for a in angles["angles"]] == [20, 30, 40]
 
 
+async def test_plan_session_builds_playlist(server):
+    async with Client(server) as client:
+        res = _payload(
+            await client.call_tool("kilter_plan_session", {"angle": 30, "include_new": False})
+        )
+    assert res["angle"] == 30
+    assert res["target"]["source"] == "inferred"
+    assert res["target"]["grade"] == "V1"
+    names = {s["name"]: [c["climb_name"] for c in s["climbs"]] for s in res["sections"]}
+    assert names == {
+        "warmup": ["Test Climb"],
+        "main": ["Flash Climb"],
+        "projects": ["Project Climb"],
+    }
+    assert res["total_climbs"] == 3
+    assert res["timezone"] == "UTC"
+
+
+async def test_plan_session_accepts_grade_labels_and_counts(server):
+    async with Client(server) as client:
+        by_v = _payload(
+            await client.call_tool(
+                "kilter_plan_session",
+                {"angle": 30, "target_grade": "V3", "warmups": 1, "projects": 0},
+            )
+        )
+        by_font = _payload(
+            await client.call_tool("kilter_plan_session", {"angle": 30, "target_grade": "6a"})
+        )
+    assert by_v["target"]["source"] == "requested"
+    assert by_v["target"]["difficulty_id_range"] == [16, 17]
+    warm = next(s for s in by_v["sections"] if s["name"] == "warmup")
+    assert warm["available"] == 2 and len(warm["climbs"]) == 1
+    projects = next(s for s in by_v["sections"] if s["name"] == "projects")
+    assert projects["climbs"] == []
+    assert by_font["target"]["difficulty_id_range"] == [16, 16]
+
+
+async def test_plan_session_rejects_unknown_grade_and_bad_counts(server):
+    async with Client(server) as client:
+        bad_grade = await client.call_tool(
+            "kilter_plan_session", {"angle": 30, "target_grade": "V-hard"}
+        )
+        missing_angle = await client.call_tool("kilter_plan_session", {})
+        too_many = await client.call_tool("kilter_plan_session", {"angle": 30, "main": 999})
+    assert bad_grade.is_error and "V-hard" in bad_grade.content[0].text
+    assert "'V4'" in bad_grade.content[0].text
+    assert missing_angle.is_error
+    assert too_many.is_error
+
+
+async def test_plan_session_angle_without_history_is_not_an_error(server):
+    async with Client(server) as client:
+        res = _payload(
+            await client.call_tool("kilter_plan_session", {"angle": 55, "target_grade": "V4"})
+        )
+    assert res["logged_climbs_at_angle"] == 0
+    assert all(s["climbs"] == [] for s in res["sections"])
+    assert any("Nothing logged at 55°" in n for n in res["notes"])
+
+
+async def test_plan_session_tops_up_with_catalogue_climbs(server):
+    async with Client(server) as client:
+        res = _payload(await client.call_tool("kilter_plan_session", {"angle": 30}))
+    names = {s["name"]: [c["climb_name"] for c in s["climbs"]] for s in res["sections"]}
+    assert names == {
+        "warmup": ["Test Climb", "Easy B", "Easy A"],
+        "main": ["Flash Climb"],
+        "projects": ["Project Climb", "Curated Target"],
+    }
+    assert res["new_climbs_considered"] == 5
+    assert res["wall"] == {
+        "product_name": "Test Board",
+        "layouts": ["10", "27"],
+        "box": {"left": 8, "right": 140, "bottom": 4, "top": 152},
+        "inferred_from_logged_climbs": 4,
+    }
+    new = [c for s in res["sections"] for c in s["climbs"] if c["status"] == "new"]
+    assert {c["source"] for c in new} == {"catalogue"}
+    assert all("new to you" in c["reason"] for c in new)
+
+
+async def test_plan_session_include_new_false_uses_logbook_only(fake: FakeKilter, settings):
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        res = _payload(
+            await client.call_tool("kilter_plan_session", {"angle": 30, "include_new": False})
+        )
+    assert res["new_climbs_considered"] == 0
+    assert res["wall"] is None
+    assert all(c["source"] == "logbook" for s in res["sections"] for c in s["climbs"])
+    from kilter_mcp.endpoints import CURATED_CLIMBS_URL, LOGGED_CLIMBS_URL
+
+    assert not any(str(r.url) in (LOGGED_CLIMBS_URL, CURATED_CLIMBS_URL) for r in fake.requests)
+
+
+async def test_plan_session_catalogue_is_fetched_once_per_process(fake: FakeKilter, settings):
+    from kilter_mcp.endpoints import CURATED_CLIMBS_URL, LOGGED_CLIMBS_URL
+
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        await client.call_tool("kilter_plan_session", {"angle": 30})
+        await client.call_tool("kilter_plan_session", {"angle": 40})
+        await client.call_tool("kilter_plan_session", {"angle": 30, "target_grade": "V3"})
+    urls = [str(r.url) for r in fake.requests]
+    assert urls.count(LOGGED_CLIMBS_URL) == 1
+    assert urls.count(CURATED_CLIMBS_URL) == 1
+
+
+async def test_plan_session_falls_back_to_logbook_when_catalogue_fails(fake: FakeKilter, settings):
+    fake.catalogue_status = 500
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        res = _payload(await client.call_tool("kilter_plan_session", {"angle": 30}))
+    assert res["new_climbs_considered"] == 0
+    assert all(c["source"] == "logbook" for s in res["sections"] for c in s["climbs"])
+    assert any("Catalogue unavailable" in n for n in res["notes"])
+    assert not any(TEST_PASSWORD in n for n in res["notes"])
+
+
+async def test_plan_session_without_wall_data_still_offers_repeats(fake: FakeKilter, settings):
+    fake.raw_logged_climbs = {"climbs": [], "climbStats": []}
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        res = _payload(await client.call_tool("kilter_plan_session", {"angle": 40}))
+    assert res["wall"] is None
+    assert any("Could not infer your wall" in n for n in res["notes"])
+    statuses = {c["status"] for s in res["sections"] for c in s["climbs"]}
+    assert "new" not in statuses
+    assert "repeat" in statuses  # graded via per-climb stat lookups, no wall needed
+
+
+async def test_plan_session_suggests_repeats_at_a_new_angle(fake: FakeKilter, settings):
+    from kilter_mcp.endpoints import climb_stats_url
+
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        res = _payload(await client.call_tool("kilter_plan_session", {"angle": 40, "warmups": 2}))
+        again = _payload(await client.call_tool("kilter_plan_session", {"angle": 40}))
+    warm = next(s for s in res["sections"] if s["name"] == "warmup")
+    assert [(c["climb_name"], c["status"]) for c in warm["climbs"]] == [
+        ("Test Climb", "repeat"),
+        ("Flash Climb", "repeat"),
+    ]
+    assert warm["climbs"][1]["sent_at"][0]["angle"] == 30
+    assert not any("not graded yet" in n for n in res["notes"])
+    # One stat lookup per sent climb not logged at 40° (climbs 1, 2, 3, 5), then cached.
+    stat_requests = [r for r in fake.requests if str(r.url).startswith(climb_stats_url(""))]
+    assert len(stat_requests) == 4
+    assert again["new_climbs_considered"] == res["new_climbs_considered"]
+
+
+async def test_plan_session_caps_repeat_lookups_per_call(
+    fake: FakeKilter, settings, monkeypatch: pytest.MonkeyPatch
+):
+    import kilter_mcp.server as server_module
+    from kilter_mcp.endpoints import climb_stats_url
+
+    monkeypatch.setattr(server_module, "REPEAT_STATS_PER_CALL", 1)
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        first = _payload(await client.call_tool("kilter_plan_session", {"angle": 40}))
+        second = _payload(await client.call_tool("kilter_plan_session", {"angle": 40}))
+    assert any("1 of your sent climbs; 3 more are not graded yet" in n for n in first["notes"])
+    assert any("2 more are not graded yet" in n for n in second["notes"])
+    stat_requests = [r for r in fake.requests if str(r.url).startswith(climb_stats_url(""))]
+    assert len(stat_requests) == 2
+    # Flash Climb (sent twice) is looked up before Test Climb (sent once).
+    assert str(stat_requests[0].url).endswith("test-climb-2")
+
+
+async def test_plan_session_notes_failed_repeat_lookups(fake: FakeKilter, settings):
+    server = create_server(KilterService(lambda: KilterClient(settings, fake.http())))
+    async with Client(server) as client:
+        await client.call_tool("kilter_get_summary", {})  # warm the logbook
+        fake.catalogue_status = 500
+        res = _payload(await client.call_tool("kilter_plan_session", {"angle": 40}))
+    assert any("Catalogue unavailable" in n for n in res["notes"])
+    assert all(c["source"] == "logbook" for s in res["sections"] for c in s["climbs"])
+
+
 async def test_invalid_period_is_tool_error(server):
     async with Client(server) as client:
         res = await client.call_tool("kilter_get_progression", {"period": "decade"})
@@ -162,7 +350,8 @@ async def test_no_secrets_in_any_tool_output(server):
         listed = await client.list_tools()
         outputs = []
         for tool in listed.tools:
-            result = await client.call_tool(tool.name, {})
+            result = await client.call_tool(tool.name, _minimal_args(tool))
+            assert not result.is_error, (tool.name, result.content[0].text)
             outputs.append(json.dumps(result.model_dump(mode="json")))
     blob = "\n".join(outputs)
     for secret in (TEST_PASSWORD, ACCESS_1, REFRESH_1, "Bearer", "test-user", "test-gym"):
@@ -330,7 +519,7 @@ async def test_every_tool_response_has_envelope_fields(server):
     async with Client(server) as client:
         listed = await client.list_tools()
         for tool in listed.tools:
-            res = _payload(await client.call_tool(tool.name, {}))
+            res = _payload(await client.call_tool(tool.name, _minimal_args(tool)))
             assert res["timezone"] == "UTC", tool.name
             assert res["total_entries"] == 9, tool.name
             assert "data_warning" not in res, tool.name

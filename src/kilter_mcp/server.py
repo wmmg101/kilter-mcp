@@ -29,14 +29,23 @@ from kilter_mcp.analytics import (
     parse_date_arg,
     progression,
     projects,
+    session_playlist,
     sessions,
     summary,
 )
 from kilter_mcp.auth import AuthError
+from kilter_mcp.catalogue import (
+    Candidate,
+    WallProfile,
+    candidates,
+    repeat_candidates,
+    stats_index,
+    wall_profile,
+)
 from kilter_mcp.client import KilterAPIError, KilterClient, Logbook
 from kilter_mcp.config import ConfigError, Settings, resolve_timezone, timezone_name
 from kilter_mcp.grades import GradeTable
-from kilter_mcp.models import LogEntry
+from kilter_mcp.models import Catalogue, ClimbStat, LogEntry
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=True)
 
@@ -65,6 +74,39 @@ Period = Annotated[
     Literal["month", "week"],
     Field(description="Bucket size for the progression: calendar month or ISO week."),
 ]
+SessionAngle = Annotated[
+    int, Field(description="Wall angle in degrees the session will be climbed at (e.g. 30).")
+]
+TargetGrade = Annotated[
+    str | None,
+    Field(
+        description=(
+            "Grade to build the session around: V-scale ('V4'), Font ('6B', '6B+') or a "
+            "Kilter difficulty id. Omit to infer it from the hardest send at that angle."
+        )
+    ),
+]
+Warmups = Annotated[
+    int,
+    Field(description="Number of warm-up climbs (sent, well below target).", ge=0, le=50),
+]
+MainCount = Annotated[
+    int,
+    Field(description="Number of climbs at the target grade (±1 Font step).", ge=0, le=50),
+]
+ProjectCount = Annotated[
+    int,
+    Field(description="Number of unsent climbs above target to finish with.", ge=0, le=50),
+]
+IncludeNew = Annotated[
+    bool,
+    Field(
+        description=(
+            "Top up each section with climbs the user has never logged, taken from Kilter's "
+            "curated list and filtered to climbs that fit their wall. false = logbook only."
+        )
+    ),
+]
 
 
 def _read_only_tool(server: MCPServer, name: str) -> Callable[[_F], _F]:
@@ -80,7 +122,9 @@ def _read_only_tool(server: MCPServer, name: str) -> Callable[[_F], _F]:
 INSTRUCTIONS = (
     "Tools for the authenticated user's own Kilter Board logbook (read-only). "
     "Use them whenever the user asks about their Kilter climbing: sessions, sends, flashes, "
-    "projects, attempts, wall angles, grades, pyramids, hardest climbs or progress over time. "
+    "projects, attempts, wall angles, grades, pyramids, hardest climbs, progress over time, "
+    "or planning an upcoming session (kilter_plan_session builds a warm-up/main/projects "
+    "playlist from climbs they have already logged at that angle). "
     "'grade' / 'font_grade' / 'label' are Kilter's consensus grade for the climb (V-scale, "
     "Font scale, and both as e.g. '6A/V3'). Kilter's scale is finer than the V-scale: several "
     "Font grades share one V-grade (4A, 4B and 4C are all V0), so when a user's sends all show "
@@ -95,6 +139,11 @@ INSTRUCTIONS = (
 # One agent question usually fans out into several tool calls within a few seconds. Serve
 # them from one logbook fetch so Kilter sees one request per question, not one per tool.
 LOGS_CACHE_TTL_SECONDS = 60.0
+
+# Repeat suggestions need one small request per sent climb not yet graded at the target
+# angle. Bound the burst so a thousand-climb logbook cannot hammer Kilter on one tool call.
+REPEAT_STATS_PER_CALL = 40
+REPEAT_STATS_CONCURRENCY = 4
 
 
 class KilterService:
@@ -116,6 +165,14 @@ class KilterService:
         self._cached: Logbook | None = None
         self._cached_at: float = 0.0
         self._lock = asyncio.Lock()
+        # Catalogue state, fetched the first time a tool needs it and kept for the process
+        # lifetime: the curated list is ~5 MB and changes slowly, the wall profile hardly ever.
+        self._catalogue_lock = asyncio.Lock()
+        self._wall: WallProfile | None = None
+        self._logged: Catalogue | None = None
+        self._curated: Catalogue | None = None
+        # Per-climb stats fetched for repeat suggestions, keyed by climb uuid.
+        self._climb_stats: dict[str, list[ClimbStat]] = {}
 
     @staticmethod
     def _default_factory() -> KilterClient:
@@ -163,6 +220,107 @@ class KilterService:
             self._cached = logbook
             self._cached_at = now
             return logbook
+
+    async def new_climbs(
+        self, logs: list[LogEntry], *, angle: int
+    ) -> tuple[list[Candidate], WallProfile | None, list[str]]:
+        """Climbs not logged at ``angle`` that the planner may suggest there.
+
+        Repeats first (climbs the user has sent at other angles, graded at ``angle``), then
+        curated climbs new to them that fit the wall. Returns ``(candidates, wall, notes)``;
+        notes explain anything the agent should relay (catalogue down, wall not inferable,
+        repeat grades still loading). Never raises: a planner that can still work from the
+        logbook should not fail because the catalogue is down.
+        """
+        client = self._get_client()
+        notes: list[str] = []
+        try:
+            async with self._catalogue_lock:
+                if self._logged is None:
+                    self._logged = await client.get_logged_climbs()
+                    self._wall = wall_profile(self._logged)
+                if self._curated is None:
+                    self._curated = await client.get_curated_climbs()
+        except (AuthError, KilterAPIError) as exc:
+            return [], self._wall, [f"Catalogue unavailable ({exc}); using your logbook only."]
+
+        stats = stats_index(self._curated, self._logged)
+        notes.extend(await self._load_repeat_stats(client, logs, stats, angle=angle))
+        repeats = repeat_candidates(logs, self._logged.climbs, stats, angle=angle)
+
+        fresh: list[Candidate] = []
+        if self._wall is None:
+            notes.append(
+                "Could not infer your wall from the logbook (no logged climbs with edge data), "
+                "so no climbs new to you are suggested; repeats of your own sends still are."
+            )
+        else:
+            logged = {e.climb_uuid for e in logs}
+            fresh = candidates(self._curated, self._wall, angle=angle, exclude=logged)
+        return repeats + fresh, self._wall, notes
+
+    async def _load_repeat_stats(
+        self,
+        client: KilterClient,
+        logs: list[LogEntry],
+        stats: dict[tuple[str, int], ClimbStat],
+        *,
+        angle: int,
+    ) -> list[str]:
+        """Fill ``stats`` with per-climb lookups for sent climbs not yet graded at ``angle``.
+
+        One request per climb (~3 KB), capped per call so a large logbook cannot trigger
+        hundreds of requests at once; results are cached for the process lifetime, so a
+        second call picks up where the first stopped. Failures are noted, not raised.
+        """
+        logged_here = {e.climb_uuid for e in logs if e.angle == angle}
+        wanted: dict[str, tuple[int, int, float]] = {}
+        for e in logs:
+            if not e.topped or e.angle is None or e.angle == angle or e.climb_uuid in logged_here:
+                continue
+            if (e.climb_uuid, angle) in stats or e.climb_uuid in self._climb_stats:
+                continue
+            rating, sends, latest = wanted.get(e.climb_uuid, (0, 0, 0.0))
+            wanted[e.climb_uuid] = (
+                max(rating, e.user_rating or 0),
+                sends + 1,
+                max(latest, e.created_at.timestamp() if e.created_at else 0.0),
+            )
+        for uuid, rows in self._climb_stats.items():
+            for s in rows:
+                stats.setdefault((uuid, s.angle), s)
+
+        # Most-wanted first: climbs the user rated, then repeated, then recent.
+        queue = sorted(wanted, key=lambda u: wanted[u], reverse=True)
+        batch, deferred = queue[:REPEAT_STATS_PER_CALL], queue[REPEAT_STATS_PER_CALL:]
+        failures = 0
+        semaphore = asyncio.Semaphore(REPEAT_STATS_CONCURRENCY)
+
+        async def fetch(uuid: str) -> None:
+            nonlocal failures
+            async with semaphore:
+                try:
+                    self._climb_stats[uuid] = await client.get_climb_stats(uuid)
+                except (AuthError, KilterAPIError):
+                    failures += 1
+
+        await asyncio.gather(*(fetch(u) for u in batch))
+        for uuid in batch:
+            for s in self._climb_stats.get(uuid, []):
+                stats.setdefault((uuid, s.angle), s)
+
+        notes: list[str] = []
+        if deferred:
+            notes.append(
+                f"Checked grades at {angle}° for {len(batch)} of your sent climbs; "
+                f"{len(deferred)} more are not graded yet. Ask again to consider them too."
+            )
+        if failures:
+            notes.append(
+                f"Could not load grades at {angle}° for {failures} of your sent climbs; they "
+                "were left out of the repeat suggestions."
+            )
+        return notes
 
     def envelope(self, logs: list[LogEntry], body: dict[str, Any]) -> dict[str, Any]:
         """Common fields on every tool response.
@@ -366,6 +524,64 @@ def create_server(service: KilterService | None = None) -> MCPServer:
         """
         logs, grades = await svc.load()
         return svc.envelope(logs, {"angles": angle_stats(logs, grades, tz=svc.tz)})
+
+    @_read_only_tool(server, "kilter_plan_session")
+    async def kilter_plan_session(
+        angle: SessionAngle,
+        target_grade: TargetGrade = None,
+        warmups: Warmups = 4,
+        main: MainCount = 6,
+        projects: ProjectCount = 2,
+        include_new: IncludeNew = True,
+    ) -> dict[str, Any]:
+        """Build a playlist of climbs for an upcoming session at a given wall angle and grade.
+
+        Use when the user is planning a session ("I'm climbing at 30° tomorrow, what should
+        I do?", "make me a V4 session at 40°", "give me a warm-up and some projects").
+        Returns ordered sections: 'warmup' (climbs 2-7 Font steps below target, easiest
+        first), 'main' (climbs within a Font step of target: repeats to consolidate, then
+        unsent ones) and 'projects' (climbs 2-5 steps above target). Climbs from the user's
+        own logbook at that angle come first in each section ('source': 'logbook', with their
+        history). When a section runs short it is topped up, first with repeats ('status':
+        'repeat': climbs they have sent at other angles, listed in 'sent_at', graded at this
+        angle by the community), then with climbs they have never logged ('status': 'new',
+        'source': 'catalogue') chosen from Kilter's curated list by community quality and
+        ascents and filtered to climbs that fit their wall. Every climb has a one-line
+        'reason'. Read 'notes' for gaps (no history at that angle, inferred target, catalogue
+        unavailable, repeat grades still loading). target_grade accepts 'V4', '6B+' or a
+        difficulty id; omit it to use the hardest send at that angle. The first call that
+        needs the catalogue downloads it (a few MB plus one small request per sent climb);
+        later calls reuse it.
+        """
+        logs, grades = await svc.load()
+        target_ids: list[int] | None = None
+        if target_grade is not None and target_grade.strip():
+            matches = grades.resolve(target_grade)
+            if not matches:
+                raise ToolError(
+                    f"Unknown grade {target_grade!r}. Use a V-grade like 'V4', a Font grade "
+                    "like '6B' or '6B+', or a Kilter difficulty id (1-39)."
+                )
+            target_ids = [g.id for g in matches]
+        fresh: list[Candidate] = []
+        wall: WallProfile | None = None
+        extra_notes: list[str] = []
+        if include_new:
+            fresh, wall, extra_notes = await svc.new_climbs(logs, angle=angle)
+        plan = session_playlist(
+            logs,
+            grades,
+            angle=angle,
+            target_ids=target_ids,
+            warmups=warmups,
+            main=main,
+            projects=projects,
+            new_climbs=fresh,
+            tz=svc.tz,
+        )
+        plan["notes"].extend(extra_notes)
+        plan["wall"] = wall.to_dict() if wall else None
+        return svc.envelope(logs, plan)
 
     return server
 

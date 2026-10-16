@@ -59,6 +59,40 @@ login command, or database.
 - R16. `kilter_get_sessions(limit)` — logs grouped by calendar day (a "session").
 - R17. `kilter_get_progression(period)` — per-month (or week) sends, max grade, flashes.
 - R18. `kilter_get_angle_stats()` — per-angle comparison.
+- R18a. `kilter_plan_session(angle, target_grade, warmups, main, projects, include_new)` —
+  a playlist for an upcoming session at one wall angle. `target_grade` accepts a V-grade,
+  Font grade, combined label or difficulty id and resolves to an id range (V4 = 6B-6B+);
+  omitted, the target is the hardest send at that angle (then anywhere, with a note). Three
+  ordered sections, a climb in at most one: `warmup` (2-7 Font steps below target, easiest
+  first), `main` (within one step of target; sent-not-flashed, then unsent, then flashed),
+  `projects` (2-5 steps above, most attempts first). Bands hang off the bottom/top of the
+  target range so they never overlap. Climbs from the user's logbook at that angle fill each
+  section first (`source: "logbook"`, with history). When a section is short and
+  `include_new` is true (default), it is topped up, repeats first, then new climbs:
+  - *repeats* (`status: "repeat"`, `source: "repeat"`): climbs the user has sent at other
+    angles but never logged at this one, graded here by the community (≥1 ascent; Kilter's
+    placeholder rows are ignored). `sent_at` lists each prior angle with grade, flashed, sends
+    and the user's star rating. Ranked by the user's rating, then times sent, then quality.
+  - *new* (`status: "new"`, `source: "catalogue"`): curated climbs never logged, with setter,
+    community ascents and quality, ranked by quality then ascents.
+  Warm-up top-ups are re-sorted easiest first. Each climb has a `reason`; each section
+  reports `available` (logbook) and `new_available` (top-up pool); `wall` describes the
+  inferred wall; `notes` explain gaps (inferred target, nothing logged at the angle,
+  catalogue unavailable, wall not inferable, repeat grades still loading). An unresolvable
+  grade is a tool error; an angle with no history or a failed catalogue fetch is not
+  (logbook-only result plus a note).
+- R18b. Catalogue reads: `GET /api/climbs/logged` (the user's own climbs, used only to infer
+  the wall: dominant product, layouts climbed, union of edge boxes) and
+  `GET /api/climbs/curated` (Kilter's featured climbs with per-angle stats). Both fetched on
+  first use, cached for the process lifetime. A curated climb is a candidate only if it is
+  listed, not a draft, on the same product, on a layout the user has climbed, its edge box fits
+  inside the inferred wall box, it has a grade and ≥1 ascent at the angle, and it is not in the
+  logbook. Repeats need the climb's grade at the target angle: taken from the curated or
+  logged payloads when present, otherwise `GET /api/climb-stat/{climbUuid}` (one ~3 KB
+  request per climb, at most 40 per tool call with 4 in flight, most-wanted first: rated, then
+  most sent, then most recent; cached for the process, so the next call picks up the rest and
+  a note says how many remain). The full per-layout dumps (`/api/climbs/all/*`,
+  `/api/climb-stat/all/*`) are not used (40-150 MB each).
 - R19. All tools are read-only and declare `readOnlyHint=True`.
 - R20. Tool output is structured (JSON-serialisable dicts), not prose.
 - R21. Every response carries `timezone` and `total_entries`; `data_warning` is present only
@@ -93,5 +127,6 @@ login command, or database.
 
 ## Out of scope for v0.1
 
-Full climb catalogue, PowerSync, write operations (logging climbs), keyring, token
+Full per-layout climb catalogue and free-text climb search (only the curated list is read,
+see R18b), PowerSync, write operations (logging climbs, creating circuits), keyring, token
 files, SQLite, dashboards, any UI.

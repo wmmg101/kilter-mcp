@@ -320,3 +320,331 @@ def test_no_grade_note_when_font_and_v_scales_align(logs, grades):
     # Fixture sends are ids 10, 13, 15, 18 (+ one unknown): one Font grade per V-grade.
     assert summary(logs, grades)["grade_note"] is None
     assert grade_pyramid(logs, grades)["grade_note"] is None
+
+
+# -- session playlist ---------------------------------------------------------------------------
+
+
+def _names(section):
+    return [c["climb_name"] for c in section["climbs"]]
+
+
+def _section(plan, name):
+    return next(s for s in plan["sections"] if s["name"] == name)
+
+
+def test_session_playlist_infers_target_from_hardest_send_at_angle(logs, grades):
+    from kilter_mcp.analytics import session_playlist
+
+    plan = session_playlist(logs, grades, angle=30)
+    # Hardest send at 30° is Flash Climb (id 13 / 5A). Bands relative to 13:
+    # warm-up 6-11 → Test Climb (10); main 12-14 → Flash Climb; projects 15-18 → Project Climb.
+    assert plan["angle"] == 30
+    assert plan["target"]["source"] == "inferred"
+    assert plan["target"]["difficulty_id"] == 13
+    assert plan["target"]["difficulty_id_range"] == [13, 13]
+    assert plan["target"]["label_range"] == "5A/V1"
+    assert plan["logged_climbs_at_angle"] == 4
+    assert [s["name"] for s in plan["sections"]] == ["warmup", "main", "projects"]
+    assert _names(_section(plan, "warmup")) == ["Test Climb"]
+    assert _names(_section(plan, "main")) == ["Flash Climb"]
+    assert _names(_section(plan, "projects")) == ["Project Climb"]
+    assert plan["total_climbs"] == 3
+    assert any("inferred from your hardest send at 30°" in n for n in plan["notes"])
+    assert any("no grade; skipped" in n for n in plan["notes"])  # Sparse Row
+
+
+def test_session_playlist_climb_rows_carry_history_and_reason(logs, grades):
+    from kilter_mcp.analytics import session_playlist
+
+    plan = session_playlist(logs, grades, angle=30)
+    warm = _section(plan, "warmup")["climbs"][0]
+    assert warm == {
+        "climb_name": "Test Climb",
+        "angle": 30,
+        "difficulty_id": 10,
+        "grade": "V0",
+        "font_grade": "4A",
+        "label": "4A/V0",
+        "status": "sent",
+        "sends": 1,
+        "flashes": 0,
+        "attempts": 3,
+        "sessions": 1,
+        "last_climbed": "2026-01-01",
+        "climb_uuid": "test-climb-1",
+        "source": "logbook",
+        "reason": "4A, 3 Font steps below target; sent once, last on 2026-01-01",
+    }
+    main = _section(plan, "main")["climbs"][0]
+    assert main["status"] == "flashed" and main["flashes"] == 2 and main["sends"] == 2
+    assert main["reason"] == "5A, at target; flashed 2 times, last on 2026-02-10"
+    proj = _section(plan, "projects")["climbs"][0]
+    assert proj["status"] == "project"
+    assert proj["attempts"] == 9 and proj["sessions"] == 2
+    assert proj["reason"].startswith("6A, 3 Font steps above target; not yet topped after 9")
+    # no other UUIDs leak
+    assert not {"user_uuid", "gym_uuid", "wall_uuid", "log_uuid"} & set(proj)
+
+
+def test_session_playlist_with_requested_v_grade_uses_id_range(logs, grades):
+    from kilter_mcp.analytics import session_playlist
+
+    # V3 is ids 16 and 17 → target band [16, 17]; warm-up 9-14, main 15-18, projects 19-22.
+    plan = session_playlist(logs, grades, angle=30, target_ids=[16, 17])
+    assert plan["target"]["source"] == "requested"
+    assert plan["target"]["difficulty_id_range"] == [16, 17]
+    assert plan["target"]["label_range"] == "6A/V3-6A+/V3"
+    assert _names(_section(plan, "warmup")) == ["Test Climb", "Flash Climb"]  # easiest first
+    assert _names(_section(plan, "main")) == ["Project Climb"]
+    assert _section(plan, "projects")["climbs"] == []
+    assert _section(plan, "projects")["available"] == 0
+    assert any("'projects' section" in n for n in plan["notes"])
+    assert not any("inferred" in n for n in plan["notes"])
+
+
+def test_session_playlist_respects_counts_and_reports_available(logs, grades):
+    from kilter_mcp.analytics import session_playlist
+
+    plan = session_playlist(logs, grades, angle=30, target_ids=[16, 17], warmups=1)
+    warm = _section(plan, "warmup")
+    assert warm["available"] == 2
+    assert _names(warm) == ["Test Climb"]
+    plan = session_playlist(logs, grades, angle=30, target_ids=[16], warmups=0, main=0)
+    assert plan["total_climbs"] == 0
+
+
+def test_session_playlist_eventually_sent_climb_is_not_a_project(logs, grades):
+    from kilter_mcp.analytics import session_playlist
+
+    # Steep Attempt at 40° was attempted then sent; it belongs in main, not projects.
+    plan = session_playlist(logs, grades, angle=40)
+    assert plan["target"]["difficulty_id"] == 18
+    main = _section(plan, "main")["climbs"]
+    assert [(c["climb_name"], c["status"], c["sends"], c["attempts"]) for c in main] == [
+        ("Steep Attempt", "sent", 1, 8)
+    ]
+    assert _section(plan, "projects")["climbs"] == []
+
+
+def test_session_playlist_main_section_ordering(grades):
+    from kilter_mcp.analytics import session_playlist
+    from kilter_mcp.models import LogEntry
+
+    def row(uuid, name, gid, *, topped, flashed=False, when="2026-05-01T18:00:00Z"):
+        return LogEntry.from_api(
+            {
+                "climbUuid": uuid,
+                "climbName": name,
+                "angle": 30,
+                "topped": topped,
+                "flashed": flashed,
+                "createdAt": when,
+                "currentDifficultyId": gid,
+            }
+        )
+
+    logs = [
+        row("f", "Flashed at target", 18, topped=True, flashed=True),
+        row("p", "Unsent at target", 18, topped=False),
+        row("s2", "Sent harder", 19, topped=True),
+        row("s1", "Sent easier", 17, topped=True),
+        row("x", "Too hard for main", 20, topped=False),
+    ]
+    plan = session_playlist(logs, grades, angle=30, target_ids=[18])
+    # sent (easiest first) → unsent → flashed
+    assert _names(_section(plan, "main")) == [
+        "Sent easier",
+        "Sent harder",
+        "Unsent at target",
+        "Flashed at target",
+    ]
+    assert _names(_section(plan, "projects")) == ["Too hard for main"]
+
+
+def test_session_playlist_angle_without_history(logs, grades):
+    from kilter_mcp.analytics import session_playlist
+
+    plan = session_playlist(logs, grades, angle=35, target_ids=[18])
+    assert plan["logged_climbs_at_angle"] == 0
+    assert all(s["climbs"] == [] for s in plan["sections"])
+    assert any("Nothing logged at 35°" in n for n in plan["notes"])
+    # per-section "no candidates" notes are pointless when there is no history at all
+    assert not any("section" in n for n in plan["notes"])
+
+    inferred = session_playlist(logs, grades, angle=35)
+    assert inferred["target"]["difficulty_id"] == 18  # hardest send anywhere
+    assert any("any angle" in n for n in inferred["notes"])
+
+
+def test_session_playlist_empty_logbook(grades):
+    from kilter_mcp.analytics import session_playlist
+
+    plan = session_playlist([], grades, angle=30)
+    assert plan["sections"] == []
+    assert plan["total_climbs"] == 0
+    assert plan["target"]["source"] == "none"
+    assert plan["target"]["difficulty_id"] is None
+    assert any("No sends in the logbook" in n for n in plan["notes"])
+
+
+# -- session playlist + catalogue ---------------------------------------------------------------
+
+
+def _new_climbs(logged_climbs, curated_climbs, logs, angle):
+    from kilter_mcp.catalogue import candidates, wall_profile
+
+    wall = wall_profile(logged_climbs)
+    return candidates(curated_climbs, wall, angle=angle, exclude={e.climb_uuid for e in logs})
+
+
+def test_session_playlist_tops_up_sections_with_new_climbs(
+    logs, grades, logged_climbs, curated_climbs
+):
+    from kilter_mcp.analytics import session_playlist
+
+    fresh = _new_climbs(logged_climbs, curated_climbs, logs, 30)
+    plan = session_playlist(logs, grades, angle=30, new_climbs=fresh)
+    assert plan["new_climbs_considered"] == 5
+    # Target inferred as 13. Warm-up band 6-11: logbook Test Climb (10) first, then the new
+    # climbs in ascending difficulty (Easy B 10, Easy A 11) so the ramp still ramps.
+    warm = _section(plan, "warmup")
+    assert _names(warm) == ["Test Climb", "Easy B", "Easy A"]
+    assert [c["source"] for c in warm["climbs"]] == ["logbook", "catalogue", "catalogue"]
+    assert warm["available"] == 1 and warm["new_available"] == 2
+    # Main band 12-14: only the logbook flash; nothing new at that grade.
+    assert _names(_section(plan, "main")) == ["Flash Climb"]
+    # Projects band 15-18: the logbook project first, then the best-rated new climb at 16.
+    proj = _section(plan, "projects")
+    assert _names(proj) == ["Project Climb", "Curated Target"]
+    assert proj["new_available"] == 2
+    new_row = proj["climbs"][1]
+    assert new_row["status"] == "new"
+    assert new_row["source"] == "catalogue"
+    assert new_row["setter"] == "setter-a"
+    assert new_row["community_ascents"] == 120
+    assert new_row["quality_average"] == 3.0
+    assert new_row["sends"] == 0 and new_row["last_climbed"] is None
+    assert new_row["reason"] == (
+        "6A, 3 Font steps above target; new to you, from Kilter's curated list: "
+        "120 community ascents, rated 3.0"
+    )
+    assert not any("No candidates" in n for n in plan["notes"])
+
+
+def test_session_playlist_new_climbs_respect_counts_and_band(
+    logs, grades, logged_climbs, curated_climbs
+):
+    from kilter_mcp.analytics import session_playlist
+
+    fresh = _new_climbs(logged_climbs, curated_climbs, logs, 30)
+    plan = session_playlist(logs, grades, angle=30, target_ids=[16, 17], new_climbs=fresh, main=2)
+    # Main band 15-18 with main=2: logbook project fills one slot, one new climb (best quality).
+    assert _names(_section(plan, "main")) == ["Project Climb", "Curated Target"]
+    # Projects band 19-22: no logbook project there, so the new 6B+ fills in.
+    assert _names(_section(plan, "projects")) == ["Curated Hard"]
+    # Counts of zero mean no top-up either.
+    plan = session_playlist(logs, grades, angle=30, target_ids=[16], new_climbs=fresh, warmups=0)
+    assert _section(plan, "warmup")["climbs"] == []
+
+
+def test_session_playlist_at_unlogged_angle_uses_only_new_climbs(
+    logs, grades, logged_climbs, curated_climbs
+):
+    from kilter_mcp.analytics import session_playlist
+
+    fresh = _new_climbs(logged_climbs, curated_climbs, logs, 40)  # only Easy A (13) at 40°
+    plan = session_playlist(logs, grades, angle=40, target_ids=[18], new_climbs=fresh)
+    assert plan["logged_climbs_at_angle"] == 1  # Steep Attempt is logged at 40°
+    plan = session_playlist(logs, grades, angle=40, target_ids=[18], new_climbs=fresh, warmups=1)
+    assert _names(_section(plan, "warmup")) == ["Easy A"]
+    # a different angle's candidates are ignored even if passed in
+    wrong = _new_climbs(logged_climbs, curated_climbs, logs, 30)
+    plan = session_playlist(logs, grades, angle=35, target_ids=[18], new_climbs=wrong)
+    assert plan["new_climbs_considered"] == 0
+    assert any("no catalogue climbs were available" in n for n in plan["notes"])
+
+
+def test_session_playlist_note_when_everything_is_new(grades, logged_climbs, curated_climbs):
+    from kilter_mcp.analytics import session_playlist
+
+    fresh = _new_climbs(logged_climbs, curated_climbs, [], 30)
+    plan = session_playlist([], grades, angle=30, target_ids=[16], new_climbs=fresh)
+    assert plan["total_climbs"] > 0
+    assert all(c["status"] == "new" for s in plan["sections"] for c in s["climbs"])
+    assert any("every suggestion is either" in n for n in plan["notes"])
+
+
+def test_session_playlist_bands_do_not_overlap_for_two_id_targets(grades):
+    from kilter_mcp.analytics import session_playlist
+    from kilter_mcp.models import LogEntry
+
+    def row(uuid, gid):
+        return LogEntry.from_api(
+            {
+                "climbUuid": uuid,
+                "climbName": f"id{gid}",
+                "angle": 30,
+                "topped": False,
+                "createdAt": "2026-05-01T18:00:00Z",
+                "currentDifficultyId": gid,
+            }
+        )
+
+    # V4 = ids 18-19. Main must be 17-20, projects 21-24; id 20 was previously in both.
+    logs = [row(f"c{g}", g) for g in range(15, 26)]
+    plan = session_playlist(logs, grades, angle=30, target_ids=[18, 19], main=50, projects=50)
+    main_ids = sorted(c["difficulty_id"] for c in _section(plan, "main")["climbs"])
+    proj_ids = sorted(c["difficulty_id"] for c in _section(plan, "projects")["climbs"])
+    assert main_ids == [17, 18, 19, 20]
+    assert proj_ids == [21, 22, 23, 24]
+    assert not set(main_ids) & set(proj_ids)
+
+
+def test_session_playlist_prefers_repeats_over_new_climbs(
+    logs, grades, logged_climbs, curated_climbs, raw_climb_stats
+):
+    from kilter_mcp.analytics import session_playlist
+    from kilter_mcp.catalogue import candidates, repeat_candidates, stats_index, wall_profile
+    from kilter_mcp.models import ClimbStat
+
+    stats = stats_index(curated_climbs, logged_climbs)
+    for rows in raw_climb_stats.values():
+        for raw in rows:
+            s = ClimbStat.from_api(raw)
+            assert s is not None
+            stats.setdefault((s.climb_uuid, s.angle), s)
+    repeats = repeat_candidates(logs, logged_climbs.climbs, stats, angle=40)
+    wall = wall_profile(logged_climbs)
+    fresh = candidates(curated_climbs, wall, angle=40, exclude={e.climb_uuid for e in logs})
+    assert [c.climb.name for c in repeats] == ["Flash Climb", "Test Climb"]
+    assert [c.climb.name for c in fresh] == ["Easy A"]
+
+    # Target inferred at 40° is 18; warm-up band 11-16 holds both repeats (12, 15) and Easy A
+    # (13). With room for two, repeats win, then the ramp sorts them easiest first.
+    plan = session_playlist(logs, grades, angle=40, new_climbs=repeats + fresh, warmups=2)
+    warm = _section(plan, "warmup")
+    assert _names(warm) == ["Test Climb", "Flash Climb"]
+    assert [c["status"] for c in warm["climbs"]] == ["repeat", "repeat"]
+    assert [c["source"] for c in warm["climbs"]] == ["repeat", "repeat"]
+    assert warm["new_available"] == 3
+    row = warm["climbs"][1]
+    assert row["sent_at"] == [
+        {
+            "angle": 30,
+            "difficulty_id": 13,
+            "grade": "V1",
+            "font_grade": "5A",
+            "label": "5A/V1",
+            "flashed": True,
+            "sends": 2,
+            "my_rating": None,
+        }
+    ]
+    assert row["reason"] == (
+        "5C, 3 Font steps below target; repeat at a new angle: flashed at 30° (5A); "
+        "graded here from 60 community ascents"
+    )
+    # With room for all three the ramp interleaves by difficulty.
+    plan = session_playlist(logs, grades, angle=40, new_climbs=repeats + fresh, warmups=4)
+    assert _names(_section(plan, "warmup")) == ["Test Climb", "Easy A", "Flash Climb"]

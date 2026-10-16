@@ -20,5 +20,20 @@ LOGS_URL = f"{PORTAL_BASE}/api/logs"
 # Difficulty table (served without authentication).
 GRADES_URL = f"{PORTAL_BASE}/api/grades"
 
+# Climb catalogue (authenticated). Both return ``{"climbs": [...], "climbStats": [...]}``.
+# ``logged`` is the user's own logged climbs with their edge boxes (tells us what fits on the
+# wall); ``curated`` is Kilter's featured list (~6k climbs, ~5 MB), the only catalogue read that
+# is small enough to fetch on demand. The per-layout ``/api/climbs/all/{layout}`` dumps run to
+# hundreds of MB and are scoped to a climb's own layout, not the wall's, so they are not used.
+LOGGED_CLIMBS_URL = f"{PORTAL_BASE}/api/climbs/logged"
+CURATED_CLIMBS_URL = f"{PORTAL_BASE}/api/climbs/curated"
+
+
+def climb_stats_url(climb_uuid: str) -> str:
+    """Community stats for one climb at every angle (~3 KB). Used to grade a climb the user
+    has sent at one angle when planning to repeat it at another."""
+    return f"{PORTAL_BASE}/api/climb-stat/{climb_uuid}"
+
+
 # Redacted in error messages so headers/tokens never leak.
 SENSITIVE_HEADERS = frozenset({"authorization", "cookie", "set-cookie"})

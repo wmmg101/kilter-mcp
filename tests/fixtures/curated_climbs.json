@@ -1,0 +1,89 @@
+{
+  "climbs": [
+    {
+      "climbUuid": "test-curated-easy-a",
+      "name": "Easy A",
+      "edgeLeft": 20, "edgeRight": 100, "edgeBottom": 8, "edgeTop": 140,
+      "username": "setter-a", "productName": "Test Board", "productLayoutUuid": "10",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-easy-b",
+      "name": "Easy B",
+      "edgeLeft": 20, "edgeRight": 100, "edgeBottom": 8, "edgeTop": 140,
+      "username": "setter-b", "productName": "Test Board", "productLayoutUuid": "27",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-target",
+      "name": "Curated Target",
+      "edgeLeft": 10, "edgeRight": 130, "edgeBottom": 4, "edgeTop": 150,
+      "username": "setter-a", "productName": "Test Board", "productLayoutUuid": "10",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-target-low-quality",
+      "name": "Curated Target Low Quality",
+      "edgeLeft": 10, "edgeRight": 130, "edgeBottom": 4, "edgeTop": 150,
+      "username": "setter-a", "productName": "Test Board", "productLayoutUuid": "10",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-hard",
+      "name": "Curated Hard",
+      "edgeLeft": 10, "edgeRight": 130, "edgeBottom": 4, "edgeTop": 150,
+      "username": "setter-c", "productName": "Test Board", "productLayoutUuid": "10",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-too-wide",
+      "name": "Too Wide",
+      "edgeLeft": 0, "edgeRight": 144, "edgeBottom": 4, "edgeTop": 150,
+      "username": "setter-a", "productName": "Test Board", "productLayoutUuid": "10",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-unknown-layout",
+      "name": "Unknown Layout",
+      "edgeLeft": 20, "edgeRight": 100, "edgeBottom": 8, "edgeTop": 140,
+      "username": "setter-a", "productName": "Test Board", "productLayoutUuid": "14",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-other-product",
+      "name": "Other Product",
+      "edgeLeft": 20, "edgeRight": 100, "edgeBottom": 8, "edgeTop": 140,
+      "username": "setter-a", "productName": "Other Board", "productLayoutUuid": "10",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-curated-draft",
+      "name": "Draft",
+      "edgeLeft": 20, "edgeRight": 100, "edgeBottom": 8, "edgeTop": 140,
+      "username": "setter-a", "productName": "Test Board", "productLayoutUuid": "10",
+      "isDraft": true, "isListed": true, "isDeleted": false
+    },
+    {
+      "climbUuid": "test-climb-2",
+      "name": "Flash Climb",
+      "edgeLeft": 8, "edgeRight": 120, "edgeBottom": 4, "edgeTop": 152,
+      "username": "test-setter", "productName": "Test Board", "productLayoutUuid": "27",
+      "isDraft": false, "isListed": true, "isDeleted": false
+    }
+  ],
+  "climbStats": [
+    {"climbUuid": "test-curated-easy-a", "angle": 30, "ascentCount": 500, "currentDifficultyId": 11, "difficultyAverage": 11.0, "qualityAverage": 2.9},
+    {"climbUuid": "test-curated-easy-b", "angle": 30, "ascentCount": 300, "currentDifficultyId": 10, "difficultyAverage": 10.0, "qualityAverage": 2.7},
+    {"climbUuid": "test-curated-easy-a", "angle": 40, "ascentCount": 200, "currentDifficultyId": 13, "difficultyAverage": 13.0, "qualityAverage": 2.8},
+    {"climbUuid": "test-curated-target", "angle": 30, "ascentCount": 120, "currentDifficultyId": 16, "difficultyAverage": 16.2, "qualityAverage": 3.0},
+    {"climbUuid": "test-curated-target-low-quality", "angle": 30, "ascentCount": 900, "currentDifficultyId": 16, "difficultyAverage": 16.0, "qualityAverage": 1.8},
+    {"climbUuid": "test-curated-hard", "angle": 30, "ascentCount": 30, "currentDifficultyId": 19, "difficultyAverage": 19.1, "qualityAverage": 2.6},
+    {"climbUuid": "test-curated-too-wide", "angle": 30, "ascentCount": 80, "currentDifficultyId": 16, "difficultyAverage": 16.0, "qualityAverage": 3.0},
+    {"climbUuid": "test-curated-unknown-layout", "angle": 30, "ascentCount": 80, "currentDifficultyId": 16, "difficultyAverage": 16.0, "qualityAverage": 3.0},
+    {"climbUuid": "test-curated-other-product", "angle": 30, "ascentCount": 80, "currentDifficultyId": 16, "difficultyAverage": 16.0, "qualityAverage": 3.0},
+    {"climbUuid": "test-curated-draft", "angle": 30, "ascentCount": 80, "currentDifficultyId": 16, "difficultyAverage": 16.0, "qualityAverage": 3.0},
+    {"climbUuid": "test-climb-2", "angle": 30, "ascentCount": 80, "currentDifficultyId": 13, "difficultyAverage": 13.0, "qualityAverage": 3.0},
+    {"climbUuid": "test-curated-no-climb-row", "angle": 30, "ascentCount": 80, "currentDifficultyId": 16, "difficultyAverage": 16.0, "qualityAverage": 3.0},
+    {"climbUuid": "test-curated-target", "angle": 30, "ascentCount": 0, "currentDifficultyId": null, "difficultyAverage": null, "qualityAverage": null}
+  ]
+}

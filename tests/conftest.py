@@ -12,9 +12,16 @@ import httpx2
 import pytest
 
 from kilter_mcp.config import Settings
-from kilter_mcp.endpoints import GRADES_URL, LOGS_URL, TOKEN_URL
+from kilter_mcp.endpoints import (
+    CURATED_CLIMBS_URL,
+    GRADES_URL,
+    LOGGED_CLIMBS_URL,
+    LOGS_URL,
+    TOKEN_URL,
+    climb_stats_url,
+)
 from kilter_mcp.grades import GradeTable
-from kilter_mcp.models import Grade, LogEntry
+from kilter_mcp.models import Catalogue, Grade, LogEntry
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -43,6 +50,26 @@ def raw_grades() -> list[dict[str, Any]]:
 
 
 @pytest.fixture
+def raw_logged_climbs() -> dict[str, Any]:
+    return json.loads((FIXTURES / "logged_climbs.json").read_text())
+
+
+@pytest.fixture
+def raw_curated_climbs() -> dict[str, Any]:
+    return json.loads((FIXTURES / "curated_climbs.json").read_text())
+
+
+@pytest.fixture
+def logged_climbs(raw_logged_climbs: dict[str, Any]) -> Catalogue:
+    return Catalogue.from_api(raw_logged_climbs)
+
+
+@pytest.fixture
+def curated_climbs(raw_curated_climbs: dict[str, Any]) -> Catalogue:
+    return Catalogue.from_api(raw_curated_climbs)
+
+
+@pytest.fixture
 def logs(raw_logs: list[dict[str, Any]]) -> list[LogEntry]:
     return [LogEntry.from_api(r) for r in raw_logs]
 
@@ -63,6 +90,15 @@ class FakeKilter:
 
     raw_logs: list[dict[str, Any]]
     raw_grades: list[dict[str, Any]]
+    raw_logged_climbs: dict[str, Any] = field(
+        default_factory=lambda: {"climbs": [], "climbStats": []}
+    )
+    raw_curated_climbs: dict[str, Any] = field(
+        default_factory=lambda: {"climbs": [], "climbStats": []}
+    )
+    # Per-climb stats served by GET /api/climb-stat/{uuid}; unknown uuids get an empty list.
+    raw_climb_stats: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    catalogue_status: int = 200
     password_ok: bool = True
     refresh_ok: bool = True
     rotate_refresh: bool = True
@@ -104,6 +140,20 @@ class FakeKilter:
             if self.logs_status != 200:
                 return httpx2.Response(self.logs_status, json={"error": "boom"})
             return httpx2.Response(200, json=self.raw_logs)
+        if url in (LOGGED_CLIMBS_URL, CURATED_CLIMBS_URL):
+            auth = request.headers.get("Authorization", "")
+            token = auth.removeprefix("Bearer ").strip()
+            if not token or token in self.reject_tokens:
+                return httpx2.Response(401, json={"error": "unauthorized"})
+            if self.catalogue_status != 200:
+                return httpx2.Response(self.catalogue_status, json={"error": "boom"})
+            body = self.raw_logged_climbs if url == LOGGED_CLIMBS_URL else self.raw_curated_climbs
+            return httpx2.Response(200, json=body)
+        if url.startswith(climb_stats_url("")):
+            if self.catalogue_status != 200:
+                return httpx2.Response(self.catalogue_status, json={"error": "boom"})
+            uuid = url.removeprefix(climb_stats_url(""))
+            return httpx2.Response(200, json=self.raw_climb_stats.get(uuid, []))
         return httpx2.Response(404, json={"error": "unknown endpoint"})
 
     def _token(self, request: httpx2.Request) -> httpx2.Response:
@@ -143,6 +193,52 @@ class FakeKilter:
         return httpx2.Response(200, json=body)
 
 
+def _stat(uuid: str, angle: int, difficulty: int | None, ascents: int, quality: float | None):
+    return {
+        "climbUuid": uuid,
+        "angle": angle,
+        "ascentCount": ascents,
+        "currentDifficultyId": difficulty,
+        "difficultyAverage": difficulty,
+        "qualityAverage": quality,
+    }
+
+
 @pytest.fixture
-def fake(raw_logs: list[dict[str, Any]], raw_grades: list[dict[str, Any]]) -> FakeKilter:
-    return FakeKilter(raw_logs=raw_logs, raw_grades=raw_grades)
+def raw_climb_stats() -> dict[str, list[dict[str, Any]]]:
+    """Per-climb stats for the fixture logbook's climbs at angles the user has not tried.
+
+    At 40°: Test Climb is 4C with 30 ascents, Flash Climb 5C with 60; Project Climb only has
+    Kilter's placeholder row (difficulty 1, no ascents); Sparse Row has nothing.
+    """
+    return {
+        "test-climb-1": [
+            _stat("test-climb-1", 30, 10, 40, 2.4),
+            _stat("test-climb-1", 40, 12, 30, 2.2),
+        ],
+        "test-climb-2": [
+            _stat("test-climb-2", 30, 13, 80, 3.0),
+            _stat("test-climb-2", 40, 15, 60, 2.9),
+        ],
+        "test-climb-3": [
+            _stat("test-climb-3", 30, 16, 20, 2.5),
+            _stat("test-climb-3", 40, 1, 0, 1.0),
+        ],
+    }
+
+
+@pytest.fixture
+def fake(
+    raw_logs: list[dict[str, Any]],
+    raw_grades: list[dict[str, Any]],
+    raw_logged_climbs: dict[str, Any],
+    raw_curated_climbs: dict[str, Any],
+    raw_climb_stats: dict[str, list[dict[str, Any]]],
+) -> FakeKilter:
+    return FakeKilter(
+        raw_logs=raw_logs,
+        raw_grades=raw_grades,
+        raw_logged_climbs=raw_logged_climbs,
+        raw_curated_climbs=raw_curated_climbs,
+        raw_climb_stats=raw_climb_stats,
+    )
